@@ -39,6 +39,8 @@ var aim_yaw := 0.0
 var aim_distance := 9.0
 ## Espaço da barra que o clique esquerdo lança em 3ª pessoa.
 var selected_slot := 0
+## Rótulos das teclas da barra na visão de cima (o jogador pode trocar as teclas).
+var slot_labels: Array[String] = SLOT_LABELS
 
 var _camera := Camera3D.new()
 var _camera_yaw := 0.0
@@ -229,7 +231,7 @@ func _draw_health(world: RefCounted, local_mage_id: int) -> void:
 			shade.size.y = ICON_SIZE * world.cooldown_fraction(local_mage_id, spell_id)
 		var third := is_third_person()
 		for slot: int in _spell_keys.size():
-			_spell_keys[slot].text = (SLOT_LABELS_THIRD if third else SLOT_LABELS)[slot]
+			_spell_keys[slot].text = (SLOT_LABELS_THIRD if third else slot_labels)[slot]
 			var icon: ColorRect = _spell_keys[slot].get_parent()
 			icon.color = SELECTED_COLOR if third and slot == selected_slot else BAR_BACK
 
@@ -510,7 +512,7 @@ func _fill_spell_bar(spell_ids: Array) -> void:
 		_spell_bar.remove_child(child)
 		child.queue_free()
 	for slot: int in mini(spell_ids.size(), SLOT_LABELS.size()):
-		_spell_icons[spell_ids[slot]] = _create_spell_icon(spell_ids[slot], SLOT_LABELS[slot])
+		_spell_icons[spell_ids[slot]] = _create_spell_icon(spell_ids[slot], slot_labels[slot])
 
 
 ## Ícone da magia com a tecla; uma sombra desce de cima enquanto a recarga corre.

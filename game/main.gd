@@ -9,19 +9,18 @@ const CameraRig := preload("res://render/camera_rig.gd")
 const Settings := preload("res://game/settings.gd")
 const MatchSetup := preload("res://game/match_setup.gd")
 const Menu := preload("res://game/menu.gd")
+const Keymap := preload("res://game/keymap.gd")
 
 const LOCAL_MAGE := 0
 const ZOOM_STEP := 0.08
 ## Partida padrão: o jogador (id 0) e 3 bots; vence quem ganhar 3 rodadas. O menu troca isso.
 const WORLD_CONFIG := {"mage_count": 4, "rounds_to_win": 3}
-## Teclas da barra de magias, na ordem dos espaços (ver `ArenaView.SLOT_LABELS`).
-const SLOT_KEYS: Array[Key] = [KEY_Q, KEY_W, KEY_E, KEY_R, KEY_D, KEY_F]
 const BOT_SEED := 20261
 ## 3ª pessoa: radianos de giro e metros de mira por pixel de mouse.
 const MOUSE_TURN := 0.004
 const MOUSE_AIM := 0.03
-const HELP_TOP := "Botão direito: mover · Q W E R D F: magias na direção do cursor · Scroll: zoom (visão de cima ↔ 3ª pessoa) · Esc: menu · F11: tela cheia · F5: nova partida"
-const HELP_THIRD := "W A S D: mover · Mouse: girar e mirar · 1–6: escolher magia · Clique esquerdo: lançar · Scroll: voltar à visão de cima · Esc: menu · F11: tela cheia · F5: nova partida"
+const HELP_TOP := "Botão direito: mover · %s: magias na direção do cursor · Scroll: zoom (visão de cima ↔ 3ª pessoa) · Esc: menu · F11: tela cheia · F5: nova partida"
+const HELP_THIRD := "%s: mover · Mouse: girar e mirar · 1–6: escolher magia · Clique esquerdo: lançar · Scroll: voltar à visão de cima · Esc: menu · F11: tela cheia · F5: nova partida"
 
 var world: SimWorld
 ## Depuração/testes: desligado, os outros magos ficam parados como bonecos de treino.
@@ -37,13 +36,15 @@ var _previous: Dictionary
 var _accumulator := 0.0
 var _help: Label
 var _settings := Settings.DEFAULTS.duplicate()
+## Teclas de jogo (ver `keymap.gd`); o menu troca e salva.
+var _keymap := Keymap.DEFAULTS.duplicate()
 ## O último comando de conduzir tinha direção: ao soltar as teclas, manda parar uma vez.
 var _steering := false
 
 
 func _ready() -> void:
 	# Sem arquivo de opções vale a janela padrão do projeto (e a pedida na linha de comando).
-	if FileAccess.file_exists(Settings.PATH):
+	if Settings.has_saved():
 		_settings = Settings.load_from()
 		Settings.apply(_settings)
 	menu = Menu.new()
@@ -55,6 +56,9 @@ func _ready() -> void:
 	menu.settings_changed.connect(_change_settings)
 	menu.settings = _settings
 	menu.screen_size = DisplayServer.screen_get_size()
+	menu.keymap_changed.connect(_change_keymap)
+	_keymap = Keymap.load_from()
+	menu.keymap = _keymap
 	start_match(menu.setup)
 	menu.show_mode(Menu.MODE_MAIN)
 	view = ArenaView.new(world.arena_radius)
@@ -63,7 +67,7 @@ func _ready() -> void:
 	view.ready_requested.connect(finish_shopping)
 	var hud := Label.new()
 	_help = hud
-	hud.text = HELP_TOP
+	_show_keys()
 	hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
 	hud.add_theme_color_override("font_outline_color", Color.BLACK)
 	hud.add_theme_constant_override("outline_size", 4)
@@ -123,9 +127,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		var slot: int = event.keycode - KEY_1
 		if slot >= 0 and slot < world.get_mage(LOCAL_MAGE).spells.size():
 			view.selected_slot = slot
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode in SLOT_KEYS \
-			and not view.is_third_person():
-		cast_slot(SLOT_KEYS.find(event.keycode), get_viewport().get_mouse_position())
+	elif event is InputEventKey and event.pressed and not event.echo and not view.is_third_person() \
+			and Keymap.slot_of(_keymap, event.keycode) >= 0:
+		cast_slot(Keymap.slot_of(_keymap, event.keycode), get_viewport().get_mouse_position())
 
 
 ## Uma opção de janela mudou (menu ou F11): vale na hora e fica salva.
@@ -133,6 +137,25 @@ func _change_settings(settings: Dictionary) -> void:
 	_settings = settings
 	Settings.apply(_settings)
 	Settings.save_to(Settings.PATH, _settings)
+
+
+## O jogador trocou uma tecla no menu: vale na hora e fica salva.
+func _change_keymap(keymap: Dictionary) -> void:
+	_keymap = keymap
+	Keymap.save_to(Settings.PATH, _keymap)
+	_show_keys()
+
+
+## Põe as teclas atuais na barra de magias e na linha de ajuda.
+func _show_keys() -> void:
+	var slots: Array[String] = []
+	for slot in Keymap.SLOT_COUNT:
+		slots.append(Keymap.key_label(Keymap.slot_key(_keymap, slot)))
+	view.slot_labels = slots
+	var moves: Array[String] = []
+	for action: String in ["move_forward", "move_left", "move_back", "move_right"]:
+		moves.append(Keymap.key_label(_keymap[action]))
+	_help.text = HELP_THIRD % " ".join(moves) if mouse_look_active() else HELP_TOP % " ".join(slots)
 
 
 ## Começa a partida escolhida no menu e guarda a escolha para a próxima vez que o jogo abrir.
@@ -177,16 +200,10 @@ func mouse_look_active() -> bool:
 		and world.phase != SimWorld.PHASE_MATCH_END
 
 
-## Teclas de movimento agora: x = direita da tela, y = para a frente.
-func _move_input() -> Vector2:
-	return Vector2(
-		float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)),
-		float(Input.is_physical_key_pressed(KEY_W)) - float(Input.is_physical_key_pressed(KEY_S)))
-
-
-## WASD vira um comando de conduzir por tick enquanto houver direção (e um de parar ao soltar).
+## As teclas de andar viram um comando de conduzir por tick enquanto houver direção (e um de parar ao soltar).
 func _queue_steering(third: bool) -> void:
-	var direction := CameraRig.move_direction(_move_input(), view.aim_yaw) if third else Vector2.ZERO
+	var direction := CameraRig.move_direction(
+		Keymap.move_input(_keymap, Input.is_key_pressed), view.aim_yaw) if third else Vector2.ZERO
 	if direction != Vector2.ZERO or _steering:
 		queue_command(SimWorld.steer_command(LOCAL_MAGE, direction))
 	_steering = direction != Vector2.ZERO
@@ -210,7 +227,7 @@ func _process(delta: float) -> void:
 	var mouse_mode := Input.MOUSE_MODE_CAPTURED if third else Input.MOUSE_MODE_VISIBLE
 	if Input.mouse_mode != mouse_mode:
 		Input.mouse_mode = mouse_mode
-		_help.text = HELP_THIRD if third else HELP_TOP
+		_show_keys()
 	# Menu aberto: o mundo fica parado (e continua desenhado ao fundo).
 	_accumulator += 0.0 if menu.visible else minf(delta, 0.1)
 	while _accumulator >= SimWorld.DT:

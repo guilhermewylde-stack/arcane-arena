@@ -7,7 +7,7 @@ const Spells := preload("res://sim/spells.gd")
 
 var _main: Node
 ## Começa negativo: os quadros antes do 1 são do menu principal.
-var _frame := -30
+var _frame := -55
 ## Quadros que faltam do teste de pausa (o contador `_frame` espera, como a simulação).
 var _pause_left := 0
 var _pause_tick := 0
@@ -191,7 +191,23 @@ func _process(_delta: float) -> bool:
 
 ## Menu principal: aparece ao abrir o jogo, com o mundo parado; Enter começa a partida.
 func _step_main_menu() -> void:
-	if _frame == -25:
+	if _frame == -45:
+		# Tela de teclas: troca a 1ª magia para Z (pelo teclado de verdade) e depois devolve o Q.
+		_main.menu.show_mode("keys")
+		_main.menu.capture("slot_1")
+	elif _frame == -42:
+		_key(KEY_Z, true)
+	elif _frame == -36:
+		_save("keys.png")
+		if _main.view.slot_labels[0] != "Z" or _main.menu.capturing != "":
+			_fail("a tecla nova não chegou à barra de magias")
+		_main.menu.capture("slot_1")
+	elif _frame == -33:
+		_key(KEY_Q, true)
+	elif _frame == -28:
+		if _main.view.slot_labels[0] != "Q":
+			_fail("a tecla não voltou para Q")
+	elif _frame == -25:
 		_main.menu.show_mode("options")
 	elif _frame == -18:
 		_save("options.png")

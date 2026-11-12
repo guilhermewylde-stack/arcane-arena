@@ -62,6 +62,12 @@ static func load_from(path: String = PATH) -> Dictionary:
 	return sanitize(read_section(path, SECTION, DEFAULTS.keys()))
 
 
+## O jogador já escolheu opções de janela? (O arquivo também guarda partida e teclas.)
+static func has_saved(path: String = PATH) -> bool:
+	var file := ConfigFile.new()
+	return FileAccess.file_exists(path) and file.load(path) == OK and file.has_section(SECTION)
+
+
 static func save_to(path: String, settings: Dictionary) -> void:
 	write_section(path, SECTION, sanitize(settings))
 

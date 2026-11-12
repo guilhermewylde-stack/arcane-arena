@@ -61,3 +61,13 @@ func test_ajustar_resolucao_anda_pela_lista_sem_dar_a_volta() -> void:
 	# Uma resolução editada à mão, fora da lista, vai para a vizinha mais próxima.
 	var odd := Settings.adjust({"width": 1300, "height": 760}, "resolution", 1, screen)
 	check_eq(Vector2i(odd.width, odd.height), Vector2i(1366, 768), "da fora da lista para a próxima maior")
+
+
+func test_so_ha_opcoes_de_janela_salvas_depois_de_salvar_a_janela() -> void:
+	DirAccess.remove_absolute(PATH)
+	check(not Settings.has_saved(PATH), "sem arquivo")
+	Settings.write_section(PATH, "keys", {"slot_1": KEY_Z})
+	check(not Settings.has_saved(PATH), "arquivo só com outras seções")
+	Settings.save_to(PATH, Settings.DEFAULTS)
+	check(Settings.has_saved(PATH), "depois de salvar a janela")
+	DirAccess.remove_absolute(PATH)
