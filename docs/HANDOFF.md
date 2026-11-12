@@ -4,14 +4,16 @@ Copie o bloco abaixo como primeira mensagem da próxima sessão (com o repositó
 
 ```
 Projeto Arcane Arena. Leia CLAUDE.md e docs/HANDOFF.md e siga o método de trabalho de lá.
-Próxima issue: docs/issues/002-vida-lava-morte.md. Faça com TDD, confira no navegador,
-feche a issue, faça commit e push. Se sobrar orçamento de contexto (< ~220k), siga para a 003.
+Próxima issue: docs/issues/011-executavel.md (cliente de PC). Confira o cliente abrindo de verdade,
+feche a issue, faça commit e push. Se sobrar orçamento de contexto (< ~220k), siga para a 002
+e depois a 003, com TDD.
 No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ```
 
 ## Estado atual
 - Issue 001 concluída: arena, um mago, mover com botão direito, zoom de cima ↔ 3ª pessoa.
 - 11 testes passando (`npm run check`).
+- O jogo ainda só roda no navegador (`npm run dev`); o cliente de PC é a issue 011, a próxima.
 
 ## Pegadinhas
 - Com a câmera em yaw 0 (olhando para +z), a direita da tela é **-x** do mundo. É esperado.

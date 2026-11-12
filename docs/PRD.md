@@ -24,7 +24,8 @@ Jogo 3D original. 2 a 8 magos numa plataforma circular cercada de lava. Magias c
 15. Como jogador, encontro e compro o jogo na Steam (possível, a decidir).
 
 ## Decisões de implementação
-- **Stack**: TypeScript + Three.js + Vite; desktop via Electron. Escolhida por ser totalmente testável e verificável em sessões de agente (testes headless + navegador).
+- **Cliente de PC, não jogo de navegador**: o produto é um executável instalável (Electron) com janela própria; o navegador é só ferramenta de desenvolvimento e teste.
+- **Stack**: TypeScript + Three.js + Vite; cliente via Electron. Escolhida por ser totalmente testável e verificável em sessões de agente (testes headless + navegador).
 - **Simulação determinística** em passo fixo de 30 Hz, separada do render; entrada vira `Command`. Base para bots, replays e netcode.
 - **Física 2D** no plano do chão (posição, velocidade, atrito); altura é só visual.
 - **Magias** definidas como dados (tabela) + poucos comportamentos (projétil, área, teleporte, gancho, escudo), para a loja e o balanceamento serem só números.

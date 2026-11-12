@@ -1,6 +1,7 @@
 # Issues (fatias verticais)
 
-Cada issue entrega algo jogável de ponta a ponta. Fazer em ordem, salvo indicação.
+Cada issue entrega algo jogável de ponta a ponta.
+**Ordem de execução**: 011 (cliente de PC) primeiro, depois 002 em diante pela numeração.
 AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário antes.
 
 | # | Título | Tipo | Depende de | Status |
@@ -15,7 +16,7 @@ AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário ante
 | 008 | Controles de 3ª pessoa (WASD + mira) | AFK | 003 | aberta |
 | 009 | Passe visual: modelos, animações, partículas, lava, bloom | HITL | 006 | aberta |
 | 010 | Áudio | HITL | 006 | aberta |
-| 011 | Executável de PC (Electron, build Windows) | AFK | 005 | aberta |
+| 011 | Cliente de PC (Electron, janela própria, build Windows) — **próxima** | AFK | 001 | aberta |
 | 012 | Menu, opções e teclas configuráveis | AFK | 007 | aberta |
 | 013 | Multiplayer online | HITL | 007 | aberta |
 | 014 | Site do jogo, instalador assinado e atualização automática | HITL | 011 | aberta |
