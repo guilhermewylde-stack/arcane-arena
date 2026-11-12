@@ -19,7 +19,7 @@ func _ready() -> void:
 	view = ArenaView.new(world.arena_radius)
 	add_child(view)
 	var hud := Label.new()
-	hud.text = "Botão direito: mover · Scroll: zoom (visão de cima ↔ 3ª pessoa) · F11: tela cheia"
+	hud.text = "Botão direito: mover · Scroll: zoom (visão de cima ↔ 3ª pessoa) · F11: tela cheia · F5: reiniciar (depuração)"
 	hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
 	hud.add_theme_color_override("font_outline_color", Color.BLACK)
 	hud.add_theme_constant_override("outline_size", 4)
@@ -40,10 +40,19 @@ func _unhandled_input(event: InputEvent) -> void:
 				view.zoom -= ZOOM_STEP
 			MOUSE_BUTTON_WHEEL_DOWN:
 				view.zoom += ZOOM_STEP
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
+		restart()
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_F11:
 		var fullscreen := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
 		DisplayServer.window_set_mode(
 			DisplayServer.WINDOW_MODE_WINDOWED if fullscreen else DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
+## Depuração: recomeça com um mundo novo (a vista reaproveita os nós dos magos).
+func restart() -> void:
+	world = SimWorld.new()
+	_previous = world.snapshot_positions()
+	_pending.clear()
 
 
 ## Toda entrada (jogador, bots, rede) entra no mundo por aqui.

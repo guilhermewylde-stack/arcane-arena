@@ -59,3 +59,62 @@ func _run() -> String:
 	for i in 50:
 		world.step()
 	return var_to_str(world.mages)
+
+
+func test_mago_nasce_vivo_com_vida_cheia() -> void:
+	var world := SimWorld.new()
+	check_eq(world.mages[0].hp, SimWorld.MAX_HP, "vida inicial")
+	check(world.mages[0].alive, "vivo")
+
+
+func test_dentro_da_arena_nao_leva_dano() -> void:
+	var world := SimWorld.new({"arena_radius": 5.0})
+	world.step([SimWorld.move_command(0, Vector2(4.9, 0))])
+	for i in SimWorld.TICK_RATE * 3:
+		world.step()
+	check_eq(world.mages[0].hp, SimWorld.MAX_HP, "vida intacta na borda de dentro")
+
+
+func test_lava_causa_dano_por_segundo() -> void:
+	var world := SimWorld.new({"arena_radius": 5.0})
+	world.mages[0].pos = Vector2(6, 0)
+	for i in SimWorld.TICK_RATE:
+		world.step()
+	check_near(world.mages[0].hp, SimWorld.MAX_HP - SimWorld.LAVA_DPS, "vida após 1 s na lava", 0.001)
+	check(world.mages[0].alive, "ainda vivo")
+
+
+func test_morre_quando_a_vida_zera() -> void:
+	var world := _world_with_dead_mage()
+	check_eq(world.mages[0].hp, 0.0, "vida não fica negativa")
+	check(not world.mages[0].alive, "morto")
+
+
+func test_morto_ignora_comandos_e_nao_se_move() -> void:
+	var world := _world_with_dead_mage()
+	var pos: Vector2 = world.mages[0].pos
+	world.step([SimWorld.move_command(0, Vector2.ZERO)])
+	for i in 10:
+		world.step()
+	check_eq(world.mages[0].pos, pos, "não saiu do lugar")
+	check(world.mages[0].move_target == null, "sem alvo de movimento")
+
+
+func test_morre_andando_e_para_onde_morreu() -> void:
+	var world := SimWorld.new({"arena_radius": 5.0})
+	world.step([SimWorld.move_command(0, Vector2(1000, 0))])
+	for i in SimWorld.TICK_RATE * 10:
+		world.step()
+	check(not world.mages[0].alive, "morreu na lava")
+	var pos: Vector2 = world.mages[0].pos
+	world.step()
+	check_eq(world.mages[0].pos, pos, "parou ao morrer")
+
+
+func _world_with_dead_mage() -> RefCounted:
+	var world := SimWorld.new({"arena_radius": 5.0})
+	world.mages[0].pos = Vector2(6, 0)
+	var ticks := ceili(SimWorld.MAX_HP / SimWorld.LAVA_DPS * SimWorld.TICK_RATE) + 2
+	for i in ticks:
+		world.step()
+	return world

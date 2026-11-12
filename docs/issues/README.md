@@ -7,7 +7,7 @@ AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário ante
 | # | Título | Tipo | Depende de | Status |
 |---|--------|------|-----------|--------|
 | 001 | Esqueleto andante: arena, mago, mover, zoom | AFK | — | concluída |
-| 002 | Vida, lava e morte | AFK | 001 | aberta |
+| 002 | Vida, lava e morte | AFK | 001 | concluída |
 | 003 | Primeira magia: Brasa (projétil, dano, empurrão) | AFK | 002 | aberta |
 | 004 | Bots | AFK | 003 | aberta |
 | 005 | Rodadas: arena que encolhe, vitória, placar | AFK | 004 | aberta |

@@ -8,6 +8,15 @@ const MAGE_COLORS: Array[Color] = [
 	Color("b070ff"), Color("ff8ad0"), Color("50d8d0"), Color("f0f0f0"),
 ]
 
+const BAR_SIZE := Vector2(64, 8)
+const HUD_BAR_SIZE := Vector2(360, 22)
+const BAR_BACK := Color(0.05, 0.03, 0.06, 0.85)
+## Altura (acima do chão) onde a barra de vida fica ancorada: logo acima do chapéu.
+const BAR_ANCHOR_HEIGHT := 2.75
+## Quanto o mago afunda quando está na lava, e até onde desce ao morrer.
+const LAVA_SINK := -0.9
+const DEATH_SINK := -3.2
+
 var zoom := 1.0
 
 var _camera := Camera3D.new()
@@ -18,6 +27,10 @@ var _marker_material: StandardMaterial3D
 var _marker_life := 0.0
 var _lava_material: StandardMaterial3D
 var _time := 0.0
+var _hud := CanvasLayer.new()
+var _bars := {}
+var _hud_bar: ColorRect
+var _hud_label: Label
 
 
 func _init(arena_radius: float) -> void:
@@ -26,6 +39,8 @@ func _init(arena_radius: float) -> void:
 	_camera.fov = 50.0
 	_camera.far = 400.0
 	add_child(_camera)
+	add_child(_hud)
+	_build_hud_bar()
 
 
 ## Converte um ponto da tela no ponto correspondente do chão da arena (ou null).
@@ -54,7 +69,14 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 			node.rotation.y = mage.facing
 		var before: Vector2 = previous.get(mage.id, mage.pos)
 		var pos := before.lerp(mage.pos, alpha)
-		node.position = Vector3(pos.x, 0.0, pos.y)
+		# Na lava o mago afunda um pouco; morto, some dentro dela.
+		var sink := 0.0
+		if not mage.alive:
+			sink = DEATH_SINK
+		elif world.is_in_lava(mage.pos):
+			sink = LAVA_SINK
+		node.visible = mage.alive or node.position.y > DEATH_SINK + 0.05
+		node.position = Vector3(pos.x, move_toward(node.position.y, sink, delta * 4.0), pos.y)
 		node.rotation.y = lerp_angle(node.rotation.y, mage.facing, minf(1.0, delta * 14.0))
 
 	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
@@ -73,6 +95,60 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 		var pose := CameraRig.compute_pose(Vector2(local.position.x, local.position.z), _camera_yaw, zoom)
 		_camera.position = pose.position
 		_camera.look_at(pose.look_at)
+
+	_draw_health(world, local_mage_id)
+
+
+## Barras de vida em tamanho fixo de tela, para ficarem legíveis em qualquer zoom.
+func _draw_health(world: RefCounted, local_mage_id: int) -> void:
+	for mage: Dictionary in world.mages:
+		var node: Node3D = _mages[mage.id]
+		var bar: ColorRect = _bars[mage.id]
+		var anchor := node.position + Vector3.UP * BAR_ANCHOR_HEIGHT
+		bar.visible = mage.alive and not _camera.is_position_behind(anchor)
+		if not bar.visible:
+			continue
+		bar.position = (_camera.unproject_position(anchor) - Vector2(BAR_SIZE.x * 0.5, BAR_SIZE.y)).round()
+		_set_fill(bar, mage.hp / world.MAX_HP)
+
+	var local: Dictionary = world.get_mage(local_mage_id)
+	if not local.is_empty():
+		_set_fill(_hud_bar, local.hp / world.MAX_HP)
+		_hud_label.text = "%d / %d" % [ceili(local.hp), int(world.MAX_HP)] if local.alive else "Morto"
+
+
+func _set_fill(bar: ColorRect, fraction: float) -> void:
+	var fill: ColorRect = bar.get_child(0)
+	fill.size.x = (bar.size.x - 2.0) * clampf(fraction, 0.0, 1.0)
+	fill.color = Color("e03a2e").lerp(Color("58d858"), smoothstep(0.2, 0.7, fraction))
+
+
+## Barra = fundo escuro com um preenchimento filho (índice 0).
+func _create_bar(bar_size: Vector2) -> ColorRect:
+	var bar := ColorRect.new()
+	bar.color = BAR_BACK
+	bar.size = bar_size
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fill := ColorRect.new()
+	fill.position = Vector2.ONE
+	fill.size = bar_size - Vector2(2, 2)
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(fill)
+	return bar
+
+
+func _build_hud_bar() -> void:
+	_hud_bar = _create_bar(HUD_BAR_SIZE)
+	_hud_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE, 40)
+	_hud_label = Label.new()
+	_hud_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_hud_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hud_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hud_label.add_theme_font_size_override("font_size", 14)
+	_hud_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_hud_label.add_theme_constant_override("outline_size", 4)
+	_hud_bar.add_child(_hud_label)
+	_hud.add_child(_hud_bar)
 
 
 func _build_environment(arena_radius: float) -> void:
@@ -184,6 +260,10 @@ func _create_mage(id: int) -> Node3D:
 
 	add_child(root)
 	_mages[id] = root
+	var bar := _create_bar(BAR_SIZE)
+	_hud.add_child(bar)
+	_hud.move_child(bar, 0)
+	_bars[id] = bar
 	return root
 
 

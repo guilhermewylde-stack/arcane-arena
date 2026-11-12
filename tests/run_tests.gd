@@ -11,7 +11,7 @@ func _initialize() -> void:
 		if not (file.begins_with("test_") and file.ends_with(".gd")) or file == "test_case.gd":
 			continue
 		var script: GDScript = load("res://tests/" + file)
-		if script == null:
+		if script == null or not script.can_instantiate():
 			print("ERRO  %s não carregou" % file)
 			failed += 1
 			continue

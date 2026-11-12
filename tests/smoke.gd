@@ -1,5 +1,5 @@
 extends SceneTree
-## Teste de fumaça visual: abre o jogo, anda, dá zoom e salva duas capturas.
+## Teste de fumaça visual: abre o jogo, anda, dá zoom, morre na lava, reinicia e salva capturas.
 ## xvfb-run -a godot --path . --rendering-method gl_compatibility -s tests/smoke.gd -- <pasta de saída>
 
 const SimWorld := preload("res://sim/sim_world.gd")
@@ -29,7 +29,25 @@ func _process(_delta: float) -> bool:
 		_save("third.png")
 		var pos: Vector2 = _main.world.mages[0].pos
 		print("posição final do mago: ", pos)
-		quit(0 if pos.length() > 1.0 else 1)
+		if pos.length() <= 1.0:
+			quit(1)
+		# Anda para a lava e fica lá até morrer.
+		_main.view.zoom = 0.45
+		_main.queue_command(SimWorld.move_command(0, Vector2(-_main.world.arena_radius - 3.0, 0)))
+	elif _frame == 400:
+		_save("lava.png")
+		print("posição na lava: vida ", _main.world.mages[0].hp)
+	elif _frame == 560:
+		_save("dead.png")
+		var dead: bool = not _main.world.mages[0].alive
+		print("posição: morto na lava = ", dead)
+		if not dead:
+			quit(1)
+		_main.restart()
+	elif _frame == 580:
+		var mage: Dictionary = _main.world.mages[0]
+		print("posição após reiniciar: ", mage.pos, " vivo = ", mage.alive)
+		quit(0 if mage.alive and mage.hp == SimWorld.MAX_HP else 1)
 	return false
 
 
