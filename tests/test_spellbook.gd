@@ -197,3 +197,22 @@ func test_bot_so_com_brasa_nao_inventa_magias() -> void:
 	world.mages[0].pos = Vector2(world.arena_radius + 3.0, 0)
 	for cmd: Dictionary in Bot.new(0, 1).think(world):
 		check(cmd.type != "cast" or cmd.spell == Spells.EMBER, "só lança o que tem")
+
+
+## O render (animação de lançar) e o áudio precisam saber de todo lançamento, não só dos que têm efeito imediato.
+func test_todo_lancamento_gera_evento_cast() -> void:
+	for spell_id: String in ALL:
+		var world := _duel(50.0)
+		_cast(world, spell_id, Vector2(3, 0))
+		var casts: Array = world.events.filter(func(event: Dictionary) -> bool: return event.type == "cast")
+		check_eq(casts.size(), 1, "%s gera um evento cast" % spell_id)
+		if casts.size() == 1:
+			check_eq(casts[0].spell, spell_id, "evento cast leva a magia")
+			check_eq(casts[0].target, 0, "evento cast leva quem lançou")
+
+
+func test_lancamento_em_recarga_nao_gera_evento() -> void:
+	var world := _duel(50.0)
+	_cast(world, Spells.EMBER)
+	_cast(world, Spells.EMBER)
+	check(not world.events.any(func(event: Dictionary) -> bool: return event.type == "cast"), "sem cast na recarga")

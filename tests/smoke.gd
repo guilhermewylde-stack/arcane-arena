@@ -57,6 +57,8 @@ func _process(_delta: float) -> bool:
 		_pause_tick = world.tick
 	elif _frame == 140:
 		_save("spell.png")
+		if _main.view.mage_clip(0) != "Spellcast_Shoot":
+			_fail("o mago não mostrou a animação de lançar (está em '%s')" % _main.view.mage_clip(0))
 	elif _frame == 156:
 		_save("impact.png")
 		print("posição: vida do boneco após o 1º acerto = ", dummy.hp)
@@ -130,6 +132,8 @@ func _process(_delta: float) -> bool:
 		print("posição: morto na lava = ", dead)
 		if not dead:
 			_fail("o mago não morreu na lava")
+		if _main.view.mage_clip(0) != "Death_A":
+			_fail("o mago morto não mostrou a animação de morrer")
 		_key(KEY_W, false)
 		# Segunda parte: partida de verdade contra os bots, com o jogador parado.
 		# A arena encolhe depressa para a rodada caber no teste.

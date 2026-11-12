@@ -14,7 +14,7 @@ AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário ante
 | 006 | Barra de magias e mais 6 magias | AFK | 003 | concluída |
 | 007 | Ouro e loja entre rodadas | AFK | 005, 006 | concluída |
 | 008 | Controles de 3ª pessoa (WASD + mira) | AFK | 003 | concluída |
-| 009 | Passe visual: modelos, animações, partículas, lava, bloom | HITL | 006 | aberta |
+| 009 | Passe visual: modelos, animações, partículas, lava, bloom | HITL | 006 | concluída |
 | 010 | Áudio | HITL | 006 | aberta |
 | 011 | Build Windows automático (export Godot + GitHub Actions) | AFK | 001 | concluída (usuário ainda confirma o `.exe`) |
 | 012 | Menu principal e configurar partida | AFK | 007 | concluída |
@@ -24,4 +24,4 @@ AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário ante
 | 016 | Opções de vídeo no menu | AFK | 011, 012 | concluída |
 | 017 | Teclas configuráveis | AFK | 012 | concluída |
 
-Não resta issue AFK: as abertas (009, 010, 013, 014, 015) são HITL. A 010 (áudio) inclui as opções de áudio do menu.
+Não resta issue AFK: as abertas (010, 013, 014, 015) são HITL. A 010 (áudio) inclui as opções de áudio do menu.

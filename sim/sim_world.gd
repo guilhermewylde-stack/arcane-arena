@@ -348,6 +348,7 @@ func _cast(mage: Dictionary, spell_id: String, target: Vector2) -> void:
 	if to_target.length() > 0.001 and spell.behavior != "nova" and spell.behavior != "shield":
 		mage.facing = atan2(to_target.x, to_target.y)
 	var event := {"spell": spell_id, "pos": mage.pos, "target": mage.id}
+	events.append(event.merged({"type": "cast"}))
 	match spell.behavior:
 		"projectile":
 			projectiles.append({

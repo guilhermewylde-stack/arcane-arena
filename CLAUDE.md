@@ -24,7 +24,7 @@ Jogo comercial autopublicado (site próprio, talvez Steam): só usar assets e ad
 - Entrada nunca altera o mundo direto: sempre vira um comando (`queue_command`). Isso mantém o caminho aberto para bots, replays e multiplayer.
 - `tests/` — `test_*.gd` estendem `tests/test_case.gd`; métodos `test_*` são descobertos por `tests/run_tests.gd`.
 - Scripts se referenciam por `preload("res://...")`, não por `class_name` (funciona em modo headless sem cache do editor).
-- A cena é montada por código enquanto os visuais são formas simples; cenas `.tscn` e modelos entram na issue 009.
+- A cena é montada por código (sem `.tscn` além de `main.tscn`). Direção de arte: sombrio vulcânico. Shaders em `render/*.gdshader`, efeitos em `render/fx.gd`, mago em `render/mage_view.gd` (modelo CC0 em `assets/models/`).
 
 ## Método de trabalho (Matt Pocock)
 

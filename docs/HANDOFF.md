@@ -5,24 +5,26 @@ Copie o bloco abaixo como primeira mensagem da próxima sessão (com o repositó
 ```
 Projeto Arcane Arena (Godot 4.6). Leia CLAUDE.md e docs/HANDOFF.md e siga o método de trabalho de lá.
 Comece rodando bash tools/setup_godot.sh.
-Todas as issues AFK estão concluídas; as abertas (009 visual, 010 áudio, 013 multiplayer, 014 site, 015 Steam) são HITL.
+Todas as issues AFK estão concluídas; as abertas (010 áudio, 013 multiplayer, 014 site, 015 Steam) são HITL.
 Antes de codar, me faça as perguntas da issue que eu escolher abaixo e espere minhas respostas:
-Issue escolhida: <009 ou 010 ou 013>
-Meu retorno depois de jogar o .exe: <o que achei de controles, câmera, balanceamento, bugs>
+Issue escolhida: <010 ou 013, ou "ajustes" para só corrigir o que achei jogando>
+Meu retorno depois de jogar o .exe: <o que achei do visual novo (brilho, escuridão, tamanho do mago), controles, câmera, balanceamento, bugs>
 No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ```
 
 ## Estado atual
 - Motor: Godot 4.6, GDScript.
-- Concluídas: 001–008, 011, 012, 016, 017. Abertas (todas HITL): 009, 010, 013, 014, 015.
-- 119 testes passando (`bash tools/check.sh`); o CI do GitHub roda os testes e exporta o `.exe` a cada push.
+- Concluídas: 001–009, 011, 012, 016, 017. Abertas (todas HITL): 010, 013, 014, 015.
+- Visual (009): direção **sombrio vulcânico**; mago animado do KayKit (CC0), shaders de lava e rocha, partículas, bloom. Só foi visto no renderizador de software da nuvem.
+- 126 testes passando (`bash tools/check.sh`); o CI do GitHub roda os testes e exporta o `.exe` a cada push.
 - O jogo abre no menu principal; a partida padrão é 1 jogador + 3 bots `normal`, primeiro a 3 rodadas. Todos começam só com Brasa.
 - **O usuário ainda não jogou nada à mão.** Tudo que é sensação (sensibilidade do mouse, câmera de ombro, distância da mira, dano, empurrão, preços, tempos) é chute inicial. O primeiro passo útil é ele baixar o `.exe` e contar o que achou.
 
 ## Pendências do usuário
 - Baixar o `ArcaneArena.exe`: GitHub → aba Actions → última execução do "CI" → artefato `ArcaneArena-windows` (precisa estar logado). Confirmar que abre e roda (último item do aceite da 011). O Windows deve mostrar o aviso do SmartScreen, porque o `.exe` não é assinado (assinatura é a issue 014).
 - Para publicar uma release baixável sem login: criar uma tag `v*` (ex.: `git tag v0.1.0 && git push origin v0.1.0`). Esse caminho do workflow ainda não foi exercitado.
-- Decidir a próxima issue HITL (009 visual, 010 áudio ou 013 multiplayer).
+- Olhar o visual novo no PC (Forward+) e dizer o que ajustar: brilho do bloom, chão escuro demais ou não, chapéu tapando a mira em 3ª pessoa.
+- Decidir a próxima issue HITL (010 áudio ou 013 multiplayer).
 
 ## Mapa rápido
 ### Simulação (`sim/`)
@@ -32,6 +34,7 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
   - Comandos: `move_command` (andar até um ponto), `steer_command` (andar numa direção até mandar parar; WASD), `cast_command`, `buy_command`, `ready_command`. `move` e `steer` se cancelam: vale o último.
   - Estado: `mages`, `projectiles`, `hazards`, `events` (do último `step`), `phase`, `scores`, `gold`, `shop_ready`.
   - Fases: `countdown` → `round` → `round_end` → `shop` → ... → `match_end`. Sem `rounds_to_win` o mundo é livre (é o que os testes de magia e a 1ª parte do teste de fumaça usam).
+  - Eventos: `cast` (todo lançamento; `target` = quem lançou), `hit`, `fizzle`, `reflect`, `blink`, `nova`, `shield`, `explosion`. O áudio (010) pode se pendurar neles.
 - `bot.gd`: `Bot.new(mage_id, seed, dificuldade)` e `think(world) -> comandos`.
 
 ### Jogo (`game/`)
@@ -41,7 +44,9 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 
 ### Render (`render/`)
 - `camera_rig.gd`: matemática pura. 3ª pessoa quando `zoom < THIRD_PERSON_ZOOM` (0.3); `move_direction` (WASD relativo à câmera), `aim_point` (retículo), câmera de ombro (`NEAR.shoulder`).
-- `arena_view.gd`: desenha tudo. `aim_yaw`/`aim_distance`/`selected_slot`/`slot_labels` são escritos pelo `main.gd`. Fora da 3ª pessoa `aim_yaw` acompanha o `facing` do mago, para a câmera entrar por trás dele.
+- `mage_anim.gd`: lógica pura que escolhe a animação (morto > atingido > lançando > correndo > parado). `mage_view.gd`: o modelo, as peças na cor do jogador, escudo e chamas.
+- `fx.gd`: fábrica de materiais que brilham e partículas (`trail`, `sparks`, `flames`, `embers`). `lava.gdshader` e `rock.gdshader` (uniformes `energy`; `edge_radius`, `pulse`).
+- `arena_view.gd`: desenha tudo. `mage_clip(id)` diz a animação em cartaz (o teste de fumaça usa). `aim_yaw`/`aim_distance`/`selected_slot`/`slot_labels` são escritos pelo `main.gd`. Fora da 3ª pessoa `aim_yaw` acompanha o `facing` do mago, para a câmera entrar por trás dele.
 
 ## Controles
 - Visão de cima: botão direito move; Q W E R D F (configuráveis) lançam no cursor.
@@ -51,6 +56,7 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ## Ideias anotadas (fora do escopo feito)
 - Em 3ª pessoa a câmera não tem inclinação vertical (o mouse vertical só move o retículo) e o mago vira para onde anda, não para onde mira.
 - Opções de áudio no menu entram junto com a 010. Sensibilidade do mouse (`MOUSE_TURN`, `MOUSE_AIM` em `main.gd`) ainda não é opção.
+- Visual: o Mago do KayKit é o mesmo para todos (só muda a cor); o pacote tem Cavaleiro, Bárbaro e Ladino se quisermos variar. Sem ícones de magia (a barra ainda é de quadrados coloridos) e sem arte de menu.
 - A Fagulha Teleguiada orbita sem acertar um alvo colado. Com 7 magias e barra de 6, a 7ª comprada não entra na barra e não há como vender.
 - O jogador morto vira espectador (câmera no centro), sem trocar de alvo. Um jogador parado morre rápido: os bots miram quem está mais perto.
 - "Menu principal" na pausa deixa a partida parada ao fundo até "Jogar" começar outra.
@@ -64,6 +70,10 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 - O teste de fumaça não troca opções de janela: um `settings.cfg` com seção `window` faria as rodadas seguintes abrirem em 1600x900 (bem mais lentas). `main.gd` só aplica a janela se `Settings.has_saved()`.
 - O teste do arquivo de opções quebrado imprime um `ERROR: ConfigFile parse error` no `check.sh`: é esperado.
 - `tools/smoke.sh` falha (exit 1) se o log tiver `SCRIPT ERROR` ou `FALHA`; o log fica em `<pasta>/smoke.log`. Erros de ALSA/áudio são do contêiner.
+- Sites de assets (kenney.nl, quaternius.com, itch.io, opengameart.org) são bloqueados na rede da nuvem, mas repositórios **públicos do GitHub** podem ser clonados (`git clone` direto): o KayKit veio assim.
+- O modelo do mago (`MODEL_SCALE` 0.85) olha para +z, igual ao `facing`. Animações em laço (`Idle`, `Running_A`) são marcadas por código em `mage_view.gd`, porque o GLB vem sem laço.
+- Os shaders precisam funcionar em Forward+ e em `gl_compatibility` (teste de fumaça): nada de recursos exclusivos de um deles.
+- Mago morto na pedra fica caído até a borda passar por ele; só afunda na lava.
 - Usar `preload` por caminho em vez de `class_name`. Um teste que não compila conta como falha.
 - Testes de magia usam `arena_radius` enorme para a lava não interferir; os de lava usam raio 5.
 - O render recebe as posições do tick anterior para interpolar; entidades novas devem entrar em `snapshot_positions()`.

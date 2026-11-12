@@ -7,6 +7,10 @@ signal ready_requested
 
 const CameraRig := preload("res://render/camera_rig.gd")
 const Spells := preload("res://sim/spells.gd")
+const MageView := preload("res://render/mage_view.gd")
+const Fx := preload("res://render/fx.gd")
+const LAVA_SHADER := preload("res://render/lava.gdshader")
+const ROCK_SHADER := preload("res://render/rock.gdshader")
 
 const MAGE_COLORS: Array[Color] = [
 	Color("4aa3ff"), Color("ff5a4a"), Color("6bd66b"), Color("e0c040"),
@@ -21,6 +25,7 @@ const BAR_ANCHOR_HEIGHT := 2.75
 ## Quanto o mago afunda quando está na lava, e até onde desce ao morrer.
 const LAVA_SINK := -0.9
 const DEATH_SINK := -3.2
+const LAVA_LEVEL := -1.2
 ## Altura em que os projéteis voam (na mão/cajado do mago).
 const PROJECTILE_HEIGHT := 1.1
 const ICON_SIZE := 52.0
@@ -49,7 +54,8 @@ var _mages := {}
 var _marker: MeshInstance3D
 var _marker_material: StandardMaterial3D
 var _marker_life := 0.0
-var _lava_material: StandardMaterial3D
+var _lava_material: ShaderMaterial
+var _rock_material: ShaderMaterial
 var _time := 0.0
 var _hud := CanvasLayer.new()
 var _bars := {}
@@ -67,7 +73,8 @@ var _shop_title: Label
 var _shop_buttons := {}
 var _shop_ready_button: Button
 var _shown_spells: Array = []
-var _shields := {}
+## Anel de raio 1 usado nas ondas de choque (Vendaval, Cometa).
+var _wave_mesh: ArrayMesh
 ## Avisos de área prestes a explodir: { id: { ring: MeshInstance3D, rock: MeshInstance3D, total: int } }.
 var _hazards := {}
 var _arena_root := Node3D.new()
@@ -110,6 +117,11 @@ func aim_point() -> Vector2:
 	return CameraRig.aim_point(_focus, aim_yaw, aim_distance)
 
 
+## Animação que o mago está mostrando (para testes e depuração).
+func mage_clip(id: int) -> String:
+	return _mages[id].clip() if _mages.has(id) else ""
+
+
 func show_move_marker(at: Vector2) -> void:
 	_marker.position = Vector3(at.x, 0.03, at.y)
 	_marker_life = 1.0
@@ -120,18 +132,32 @@ func show_events(events: Array) -> void:
 	for event: Dictionary in events:
 		var color: Color = Spells.TABLE[event.spell].color
 		var at := Vector3(event.pos.x, PROJECTILE_HEIGHT, event.pos.y)
+		var ground := Vector3(event.pos.x, 0.06, event.pos.y)
+		if event.has("target") and _mages.has(event.target):
+			_mages[event.target].notify(event.type)
 		match event.type:
 			"hit":
 				_spawn_burst(at, color, 1.6)
+				_spawn_sparks(at, color, 18, 7.0)
 			"fizzle":
 				_spawn_burst(at, color, 0.6)
+				_spawn_sparks(at, color, 6, 3.0)
 			"reflect":
 				_spawn_burst(at, color, 2.0)
+				_spawn_sparks(at, color, 14, 6.0)
 			"blink":
-				_spawn_burst(Vector3(event.from.x, PROJECTILE_HEIGHT, event.from.y), color, 1.2)
+				var from := Vector3(event.from.x, PROJECTILE_HEIGHT, event.from.y)
+				_spawn_burst(from, color, 1.2)
+				_spawn_sparks(from, color, 16, 4.0)
 				_spawn_burst(at, color, 1.8)
-			"nova", "explosion":
-				_spawn_burst(Vector3(event.pos.x, 0.2, event.pos.y), color, event.radius)
+				_spawn_sparks(at, color, 16, 4.0)
+			"nova":
+				_spawn_burst(ground, color, event.radius, _wave_mesh)
+				_spawn_sparks(at, color, 24, 9.0)
+			"explosion":
+				_spawn_burst(ground, color, event.radius, _wave_mesh)
+				_spawn_burst(ground, color, event.radius * 0.7)
+				_spawn_sparks(ground, color, 40, 11.0)
 
 
 ## Desenha um quadro. `previous` é o `snapshot_positions()` do tick anterior e `alpha` (0..1)
@@ -142,25 +168,27 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 	var shrink: float = world.arena_radius / _arena_radius
 	_arena_root.scale = Vector3(shrink, 1.0, shrink)
 	for mage: Dictionary in world.mages:
-		var node: Node3D = _mages.get(mage.id)
+		var node: MageView = _mages.get(mage.id)
 		if node == null:
 			node = _create_mage(mage.id)
 			node.rotation.y = mage.facing
 		var before: Vector2 = previous.mages.get(mage.id, mage.pos)
 		var pos := before.lerp(mage.pos, alpha)
-		# Na lava o mago afunda um pouco; morto, some dentro dela.
+		# Na lava o mago afunda um pouco e, morto, some dentro dela. Morto na pedra, fica caído
+		# até a borda passar por ele.
+		var in_lava: bool = world.is_in_lava(mage.pos)
 		var sink := 0.0
-		if not mage.alive:
-			sink = DEATH_SINK
-		elif world.is_in_lava(mage.pos):
-			sink = LAVA_SINK
+		if in_lava:
+			sink = LAVA_SINK if mage.alive else DEATH_SINK
 		if mage.alive and not node.visible:
 			# Voltou à vida numa nova rodada: reaparece de pé, sem subir da lava.
 			node.position.y = 0.0
 		node.visible = mage.alive or node.position.y > DEATH_SINK + 0.05
+		var moving: bool = mage.move_target != null or mage.move_dir != Vector2.ZERO
+		node.animate(delta, mage.alive, moving, in_lava and node.position.y > DEATH_SINK * 0.6)
 		node.position = Vector3(pos.x, move_toward(node.position.y, sink, delta * 4.0), pos.y)
 		node.rotation.y = lerp_angle(node.rotation.y, mage.facing, minf(1.0, delta * 14.0))
-		_shields[mage.id].visible = world.is_shielded(mage.id)
+		node.shield.visible = world.is_shielded(mage.id)
 
 	# Partida nova com menos magos: os nós que sobraram da anterior ficam escondidos.
 	for id: int in _mages:
@@ -173,7 +201,9 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 	_draw_bursts(delta)
 
 	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
-	_lava_material.emission_energy_multiplier = 0.85 + pulse * 0.2
+	_lava_material.set_shader_parameter("energy", 0.9 + pulse * 0.2)
+	_rock_material.set_shader_parameter("edge_radius", world.arena_radius)
+	_rock_material.set_shader_parameter("pulse", 0.5 + 0.5 * sin(_time * 4.0))
 
 	_marker_life = maxf(0.0, _marker_life - delta * 2.0)
 	_marker.visible = _marker_life > 0.0
@@ -256,23 +286,17 @@ func _draw_hazards(world: RefCounted, alpha: float) -> void:
 
 
 func _create_hazard(hazard: Dictionary, spell: Dictionary) -> Dictionary:
-	var warn := StandardMaterial3D.new()
-	warn.albedo_color = spell.color
-	warn.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	warn.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var warn := Fx.additive_material(spell.color)
 	var ring := _add_mesh(_ring_mesh(spell.radius - 0.25, spell.radius), warn, self)
 	ring.position = Vector3(hazard.pos.x, 0.04, hazard.pos.y)
-	var glow := StandardMaterial3D.new()
-	glow.albedo_color = spell.color
-	glow.emission_enabled = true
-	glow.emission = spell.color
-	glow.emission_energy_multiplier = 4.0
+	var glow := Fx.glow_material(spell.color.lightened(0.3), 3.0)
 	var rock_mesh := SphereMesh.new()
 	rock_mesh.radius = 0.8
 	rock_mesh.height = 1.6
 	var rock := _add_mesh(rock_mesh, glow, self)
 	rock.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	rock.position = Vector3(hazard.pos.x, COMET_HEIGHT, hazard.pos.y)
+	rock.add_child(Fx.trail(spell.color, 0.5))
 	return {"ring": ring, "rock": rock, "total": maxi(1, hazard.ticks_left)}
 
 
@@ -293,39 +317,49 @@ func _draw_projectiles(world: RefCounted, previous: Dictionary, alpha: float) ->
 
 
 func _create_projectile(id: int, spell: Dictionary) -> Node3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = spell.color
-	material.emission_enabled = true
-	material.emission = spell.color
-	material.emission_energy_multiplier = 4.0
+	# Núcleo quase branco, halo na cor da magia e um rastro de faíscas.
 	var mesh := SphereMesh.new()
-	mesh.radius = spell.radius
-	mesh.height = spell.radius * 2.0
-	var node := _add_mesh(mesh, material, self)
+	mesh.radius = spell.radius * 0.7
+	mesh.height = spell.radius * 1.4
+	var node := _add_mesh(mesh, Fx.glow_material(spell.color.lightened(0.55), 5.0), self)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var halo_mesh := SphereMesh.new()
+	halo_mesh.radius = spell.radius * 1.6
+	halo_mesh.height = spell.radius * 3.2
+	var halo := _add_mesh(halo_mesh, Fx.additive_material(Color(spell.color, 0.2)), node)
+	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.add_child(Fx.trail(spell.color, spell.radius * 0.7))
 	var light := OmniLight3D.new()
 	light.light_color = spell.color
-	light.light_energy = 2.5
-	light.omni_range = 5.0
+	light.light_energy = 3.0
+	light.omni_range = 7.0
 	node.add_child(light)
 	_projectiles[id] = node
 	return node
 
 
 ## Clarão que cresce e some: marca onde um projétil acertou ou se apagou.
-func _spawn_burst(at: Vector3, color: Color, size: float) -> void:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color.lightened(0.4)
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var mesh := SphereMesh.new()
-	mesh.radius = 1.0
-	mesh.height = 2.0
+## Com `shape` (um anel de raio 1) vira onda de choque no chão.
+func _spawn_burst(at: Vector3, color: Color, size: float, shape: Mesh = null) -> void:
+	var material := Fx.additive_material(color.lightened(0.4))
+	var mesh := shape
+	if mesh == null:
+		var sphere := SphereMesh.new()
+		sphere.radius = 1.0
+		sphere.height = 2.0
+		mesh = sphere
 	var node := _add_mesh(mesh, material, self)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.position = at
 	node.scale = Vector3.ONE * 0.2
 	_bursts.append({"node": node, "life": 1.0, "size": size})
+
+
+func _spawn_sparks(at: Vector3, color: Color, amount: int, speed: float) -> void:
+	var sparks := Fx.sparks(color, amount, speed)
+	sparks.position = at
+	add_child(sparks)
+	sparks.emitting = true
 
 
 func _draw_bursts(delta: float) -> void:
@@ -549,45 +583,59 @@ func _create_spell_icon(spell_id: String, key_label: String) -> ColorRect:
 
 
 func _build_environment(arena_radius: float) -> void:
+	# Sombrio vulcânico: quase tudo escuro; a lava e as magias é que acendem a cena.
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("0b0710")
+	env.background_color = Color("050304")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("8f9ccc")
-	env.ambient_light_energy = 0.3
+	env.ambient_light_color = Color("7a4030")
+	env.ambient_light_energy = 0.35
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.glow_enabled = true
-	env.glow_intensity = 0.35
-	env.glow_hdr_threshold = 1.2
+	env.glow_intensity = 0.6
+	env.glow_bloom = 0.05
+	env.glow_hdr_threshold = 1.0
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	env.fog_enabled = true
-	env.fog_light_color = Color("3a1208")
-	env.fog_density = 0.006
+	env.fog_light_color = Color("2c0a05")
+	env.fog_density = 0.008
+	env.adjustment_enabled = true
+	env.adjustment_contrast = 1.08
+	env.adjustment_saturation = 1.1
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
-	var sun := DirectionalLight3D.new()
-	sun.light_color = Color("fff0d8")
-	sun.light_energy = 1.3
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = arena_radius * 4.0
-	sun.rotation_degrees = Vector3(-58, -40, 0)
-	add_child(sun)
+	# Luar frio de cima (dá forma e sombra) e o clarão da lava de baixo (acende queixos, abas e laterais).
+	var moon := DirectionalLight3D.new()
+	moon.light_color = Color("a8b8e8")
+	moon.light_energy = 0.9
+	moon.shadow_enabled = true
+	moon.directional_shadow_max_distance = arena_radius * 4.0
+	moon.rotation_degrees = Vector3(-58, -40, 0)
+	add_child(moon)
+	var underglow := DirectionalLight3D.new()
+	underglow.light_color = Color("ff5a1a")
+	underglow.light_energy = 0.9
+	underglow.rotation_degrees = Vector3(65, 30, 0)
+	add_child(underglow)
 
 
 func _build_arena(arena_radius: float) -> void:
-	_lava_material = StandardMaterial3D.new()
-	_lava_material.albedo_color = Color("2a0a04")
-	_lava_material.emission_enabled = true
-	_lava_material.emission = Color("ff4a12")
+	_lava_material = ShaderMaterial.new()
+	_lava_material.shader = LAVA_SHADER
 	var lava_mesh := PlaneMesh.new()
 	lava_mesh.size = Vector2(500, 500)
 	var lava := _add_mesh(lava_mesh, _lava_material, self)
-	lava.position.y = -1.2
+	lava.position.y = LAVA_LEVEL
+	var embers := Fx.embers(arena_radius * 2.5)
+	embers.position.y = LAVA_LEVEL
+	add_child(embers)
+	_wave_mesh = _ring_mesh(0.82, 1.0)
 
-	var stone := StandardMaterial3D.new()
-	stone.albedo_color = Color("6b6470")
-	stone.roughness = 0.9
+	_rock_material = ShaderMaterial.new()
+	_rock_material.shader = ROCK_SHADER
+	var stone := _rock_material
 	var platform_mesh := CylinderMesh.new()
 	platform_mesh.top_radius = arena_radius
 	platform_mesh.bottom_radius = arena_radius * 0.92
@@ -598,7 +646,7 @@ func _build_arena(arena_radius: float) -> void:
 
 	# Anéis decorativos para dar leitura de distância no chão.
 	var groove := StandardMaterial3D.new()
-	groove.albedo_color = Color("3a3340")
+	groove.albedo_color = Color("2b2833")
 	for fraction: float in [0.33, 0.66, 0.98]:
 		var ring := _add_mesh(_ring_mesh(arena_radius * fraction - 0.12, arena_radius * fraction), groove, _arena_root)
 		ring.position.y = 0.01
@@ -621,65 +669,8 @@ func _build_arena(arena_radius: float) -> void:
 	_reticle.visible = false
 
 
-func _create_mage(id: int) -> Node3D:
-	var root := Node3D.new()
-	var robe_material := StandardMaterial3D.new()
-	robe_material.albedo_color = MAGE_COLORS[id % MAGE_COLORS.size()]
-	robe_material.roughness = 0.7
-	var robe_mesh := CylinderMesh.new()
-	robe_mesh.top_radius = 0.0
-	robe_mesh.bottom_radius = 0.62
-	robe_mesh.height = 1.5
-	_add_mesh(robe_mesh, robe_material, root).position.y = 0.75
-
-	var skin := StandardMaterial3D.new()
-	skin.albedo_color = Color("e8c9a8")
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.27
-	head_mesh.height = 0.54
-	_add_mesh(head_mesh, skin, root).position.y = 1.62
-
-	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color("2a2233")
-	var hat_mesh := CylinderMesh.new()
-	hat_mesh.top_radius = 0.0
-	hat_mesh.bottom_radius = 0.36
-	hat_mesh.height = 0.75
-	_add_mesh(hat_mesh, dark, root).position.y = 2.1
-
-	var wood := StandardMaterial3D.new()
-	wood.albedo_color = Color("5a3b22")
-	var staff_mesh := CylinderMesh.new()
-	staff_mesh.top_radius = 0.04
-	staff_mesh.bottom_radius = 0.04
-	staff_mesh.height = 1.9
-	_add_mesh(staff_mesh, wood, root).position = Vector3(0.55, 0.95, 0.25)
-
-	var glow := StandardMaterial3D.new()
-	glow.albedo_color = Color("bfe6ff")
-	glow.emission_enabled = true
-	glow.emission = Color("bfe6ff")
-	glow.emission_energy_multiplier = 3.0
-	var orb_mesh := SphereMesh.new()
-	orb_mesh.radius = 0.13
-	orb_mesh.height = 0.26
-	_add_mesh(orb_mesh, glow, root).position = Vector3(0.55, 1.98, 0.25)
-
-	var bubble_material := StandardMaterial3D.new()
-	bubble_material.albedo_color = Color(Spells.TABLE[Spells.AEGIS].color, 0.35)
-	bubble_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bubble_material.emission_enabled = true
-	bubble_material.emission = Spells.TABLE[Spells.AEGIS].color
-	bubble_material.emission_energy_multiplier = 0.8
-	var bubble_mesh := SphereMesh.new()
-	bubble_mesh.radius = 1.5
-	bubble_mesh.height = 3.0
-	var bubble := _add_mesh(bubble_mesh, bubble_material, root)
-	bubble.position.y = 1.1
-	bubble.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	bubble.visible = false
-	_shields[id] = bubble
-
+func _create_mage(id: int) -> MageView:
+	var root := MageView.new(MAGE_COLORS[id % MAGE_COLORS.size()], Spells.TABLE[Spells.AEGIS].color, _ring_mesh(0.72, 0.9, 48))
 	add_child(root)
 	_mages[id] = root
 	var bar := _create_bar(BAR_SIZE)
