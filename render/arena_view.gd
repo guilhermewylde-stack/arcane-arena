@@ -25,6 +25,7 @@ var zoom := 1.0
 
 var _camera := Camera3D.new()
 var _camera_yaw := 0.0
+var _focus := Vector2.ZERO
 var _mages := {}
 var _marker: MeshInstance3D
 var _marker_material: StandardMaterial3D
@@ -39,9 +40,15 @@ var _projectiles := {}
 ## Clarões de impacto em andamento: { node: MeshInstance3D, life: float (1 → 0), size: float }.
 var _bursts: Array[Dictionary] = []
 var _spell_icons := {}
+var _arena_root := Node3D.new()
+var _arena_radius: float
+var _banner: Label
+var _scoreboard: HBoxContainer
 
 
 func _init(arena_radius: float) -> void:
+	_arena_radius = arena_radius
+	add_child(_arena_root)
 	_build_environment(arena_radius)
 	_build_arena(arena_radius)
 	_camera.fov = 50.0
@@ -50,6 +57,7 @@ func _init(arena_radius: float) -> void:
 	add_child(_hud)
 	_build_hud_bar()
 	_build_spell_icon(Spells.EMBER)
+	_build_match_hud()
 
 
 ## Converte um ponto da tela no ponto correspondente do chão da arena (ou null).
@@ -82,6 +90,9 @@ func show_events(events: Array) -> void:
 ## é o quanto já andamos entre ele e o tick atual.
 func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mage_id: int, delta: float) -> void:
 	_time += delta
+	# A plataforma acompanha o raio da simulação (a arena encolhe durante a rodada).
+	var shrink: float = world.arena_radius / _arena_radius
+	_arena_root.scale = Vector3(shrink, 1.0, shrink)
 	for mage: Dictionary in world.mages:
 		var node: Node3D = _mages.get(mage.id)
 		if node == null:
@@ -95,6 +106,9 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 			sink = DEATH_SINK
 		elif world.is_in_lava(mage.pos):
 			sink = LAVA_SINK
+		if mage.alive and not node.visible:
+			# Voltou à vida numa nova rodada: reaparece de pé, sem subir da lava.
+			node.position.y = 0.0
 		node.visible = mage.alive or node.position.y > DEATH_SINK + 0.05
 		node.position = Vector3(pos.x, move_toward(node.position.y, sink, delta * 4.0), pos.y)
 		node.rotation.y = lerp_angle(node.rotation.y, mage.facing, minf(1.0, delta * 14.0))
@@ -115,11 +129,16 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 		zoom = CameraRig.clamp_zoom(zoom)
 		var target_yaw := lerp_angle(0.0, local.rotation.y, CameraRig.follow_weight(zoom))
 		_camera_yaw = lerp_angle(_camera_yaw, target_yaw, minf(1.0, delta * 5.0))
-		var pose := CameraRig.compute_pose(Vector2(local.position.x, local.position.z), _camera_yaw, zoom)
+		# Morto, o jogador vira espectador: a câmera desliza para o centro da arena.
+		var local_mage: Dictionary = world.get_mage(local_mage_id)
+		var focus_target := Vector2(local.position.x, local.position.z) if local_mage.alive else Vector2.ZERO
+		_focus = focus_target if local_mage.alive else _focus.lerp(focus_target, minf(1.0, delta * 2.0))
+		var pose := CameraRig.compute_pose(_focus, _camera_yaw, zoom)
 		_camera.position = pose.position
 		_camera.look_at(pose.look_at)
 
 	_draw_health(world, local_mage_id)
+	_draw_match(world, local_mage_id)
 
 
 ## Barras de vida em tamanho fixo de tela, para ficarem legíveis em qualquer zoom.
@@ -241,6 +260,62 @@ func _build_hud_bar() -> void:
 	_hud.add_child(_hud_bar)
 
 
+static func mage_name(id: int, local_mage_id: int) -> String:
+	return "Você" if id == local_mage_id else "Bot %d" % id
+
+
+## Placar no topo e faixa central com contagem, vencedor da rodada e da partida.
+func _draw_match(world: RefCounted, local_mage_id: int) -> void:
+	_scoreboard.visible = world.rounds_to_win > 0
+	_banner.text = ""
+	if not _scoreboard.visible:
+		return
+	while _scoreboard.get_child_count() < world.scores.size():
+		var entry := Label.new()
+		entry.add_theme_font_size_override("font_size", 20)
+		entry.add_theme_color_override("font_color", MAGE_COLORS[_scoreboard.get_child_count() % MAGE_COLORS.size()])
+		entry.add_theme_color_override("font_outline_color", Color.BLACK)
+		entry.add_theme_constant_override("outline_size", 6)
+		_scoreboard.add_child(entry)
+	for id: int in world.scores.size():
+		var entry: Label = _scoreboard.get_child(id)
+		entry.text = "%s  %d" % [mage_name(id, local_mage_id), world.scores[id]]
+		entry.modulate.a = 1.0 if world.get_mage(id).alive else 0.45
+	match world.phase:
+		world.PHASE_COUNTDOWN:
+			_banner.text = "Rodada %d\n%d" % [world.round_number, ceili(world.phase_seconds_left())]
+		world.PHASE_ROUND_END:
+			if world.round_winner < 0:
+				_banner.text = "Empate"
+			elif world.round_winner == local_mage_id:
+				_banner.text = "Você venceu a rodada!"
+			else:
+				_banner.text = "%s venceu a rodada" % mage_name(world.round_winner, local_mage_id)
+		world.PHASE_MATCH_END:
+			var who := "Você venceu" if world.match_winner == local_mage_id \
+				else "%s venceu" % mage_name(world.match_winner, local_mage_id)
+			_banner.text = "%s a partida!\nPrimeiro a %d rodadas · F5: nova partida" % [who, world.rounds_to_win]
+
+
+func _build_match_hud() -> void:
+	_scoreboard = HBoxContainer.new()
+	_scoreboard.add_theme_constant_override("separation", 36)
+	_scoreboard.alignment = BoxContainer.ALIGNMENT_CENTER
+	_scoreboard.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE, 14)
+	_scoreboard.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud.add_child(_scoreboard)
+	_banner = Label.new()
+	_banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_banner.offset_bottom = -260.0
+	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner.add_theme_font_size_override("font_size", 44)
+	_banner.add_theme_color_override("font_outline_color", Color.BLACK)
+	_banner.add_theme_constant_override("outline_size", 12)
+	_hud.add_child(_banner)
+
+
 ## Ícone da magia com a tecla; uma sombra desce de cima enquanto a recarga corre.
 func _build_spell_icon(spell_id: String) -> void:
 	var spell: Dictionary = Spells.TABLE[spell_id]
@@ -317,14 +392,14 @@ func _build_arena(arena_radius: float) -> void:
 	platform_mesh.bottom_radius = arena_radius * 0.92
 	platform_mesh.height = 1.6
 	platform_mesh.radial_segments = 96
-	var platform := _add_mesh(platform_mesh, stone, self)
+	var platform := _add_mesh(platform_mesh, stone, _arena_root)
 	platform.position.y = -0.8
 
 	# Anéis decorativos para dar leitura de distância no chão.
 	var groove := StandardMaterial3D.new()
 	groove.albedo_color = Color("3a3340")
 	for fraction: float in [0.33, 0.66, 0.98]:
-		var ring := _add_mesh(_ring_mesh(arena_radius * fraction - 0.12, arena_radius * fraction), groove, self)
+		var ring := _add_mesh(_ring_mesh(arena_radius * fraction - 0.12, arena_radius * fraction), groove, _arena_root)
 		ring.position.y = 0.01
 
 	_marker_material = StandardMaterial3D.new()

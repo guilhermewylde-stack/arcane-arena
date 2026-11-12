@@ -25,6 +25,7 @@ const ORBIT_DISTANCE := Vector2(5.0, 10.0)
 const DODGE_REACTION := 0.7
 const DODGE_MARGIN := 0.5
 const DODGE_STEP := 3.0
+const TARGET_TIE_MARGIN := 1.0
 
 var mage_id: int
 var difficulty: Dictionary
@@ -66,17 +67,19 @@ func think(world: RefCounted) -> Array:
 	return commands
 
 
+## O inimigo vivo mais próximo. Entre os quase empatados (diferença menor que
+## TARGET_TIE_MARGIN) sorteia, para os bots não perseguirem sempre o de menor id.
 func _nearest_enemy(world: RefCounted, me: Dictionary) -> Dictionary:
-	var best := {}
-	var best_dist := INF
-	for mage: Dictionary in world.mages:
-		if mage.id == mage_id or not mage.alive:
-			continue
-		var dist: float = me.pos.distance_squared_to(mage.pos)
-		if dist < best_dist:
-			best = mage
-			best_dist = dist
-	return best
+	var enemies: Array = world.mages.filter(
+		func(mage: Dictionary) -> bool: return mage.id != mage_id and mage.alive)
+	if enemies.is_empty():
+		return {}
+	var nearest := INF
+	for mage: Dictionary in enemies:
+		nearest = minf(nearest, me.pos.distance_to(mage.pos))
+	var tied := enemies.filter(
+		func(mage: Dictionary) -> bool: return me.pos.distance_to(mage.pos) <= nearest + TARGET_TIE_MARGIN)
+	return tied[0] if tied.size() == 1 else tied[_rng.randi() % tied.size()]
 
 
 ## Para onde fugir do projétil mais urgente que vai acertar o bot, ou null se não há perigo.

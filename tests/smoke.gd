@@ -1,5 +1,5 @@
 extends SceneTree
-## Teste de fumaça visual: abre o jogo, anda, empurra o boneco com Brasa, dá zoom, morre na lava, reinicia, assiste aos bots e salva capturas.
+## Teste de fumaça visual: abre o jogo, anda, empurra o boneco com Brasa, dá zoom, morre na lava, reinicia, assiste a uma partida de bots e salva capturas.
 ## xvfb-run -a godot --path . --rendering-method gl_compatibility -s tests/smoke.gd -- <pasta de saída>
 
 const SimWorld := preload("res://sim/sim_world.gd")
@@ -8,6 +8,9 @@ const Spells := preload("res://sim/spells.gd")
 var _main: Node
 var _frame := 0
 var _failed := false
+var _round_end_frame := 0
+
+const MATCH_CONFIG := {"mage_count": 4, "rounds_to_win": 1, "shrink_delay": 1.0, "shrink_rate": 5.0, "min_arena_radius": 0.0}
 var _out := "user://"
 
 
@@ -17,12 +20,15 @@ func _initialize() -> void:
 		_out = args[0]
 	_main = load("res://game/main.tscn").instantiate()
 	root.add_child(_main)
-	# Primeira parte: os outros magos ficam parados, como bonecos de treino.
-	_main.bots_enabled = false
 
 
 func _process(_delta: float) -> bool:
 	_frame += 1
+	if _frame == 1:
+		# Primeira parte: mundo livre (sem rodadas) e os outros magos parados, como bonecos
+		# de treino. Só aqui, e não em _initialize, porque o _ready do jogo já rodou.
+		_main.restart({"mage_count": 4})
+		_main.bots_enabled = false
 	var world: RefCounted = _main.world
 	var dummy: Dictionary = world.mages[2]
 	if _frame == 20:
@@ -61,28 +67,38 @@ func _process(_delta: float) -> bool:
 		if not dead:
 			_fail("o mago não morreu na lava")
 		# Segunda parte: partida de verdade contra os bots, com o jogador parado.
-		_main.restart()
+		# A arena encolhe depressa para a rodada caber no teste.
+		_main.restart(MATCH_CONFIG)
 		_main.bots_enabled = true
 		_main.view.zoom = 1.0
-	elif _frame == 745:
+	elif _frame == 800:
+		_save("countdown.png")
 		var mage: Dictionary = world.mages[0]
-		print("posição após reiniciar: ", mage.pos, " vivo = ", mage.alive)
-		if not (mage.alive and mage.hp == SimWorld.MAX_HP):
-			_fail("reiniciar não restaurou o mago")
-	elif _frame == 860:
-		_save("bots.png")
+		print("posição após reiniciar: ", mage.pos, " vivo = ", mage.alive, " fase = ", world.phase)
+		if not (mage.alive and mage.hp == SimWorld.MAX_HP and world.phase == SimWorld.PHASE_COUNTDOWN):
+			_fail("a partida não começou em contagem com o mago inteiro")
 	elif _frame == 1040:
+		_save("round.png")
 		var moved := 0
-		var damaged := 0
-		var fresh: RefCounted = SimWorld.new(_main.WORLD_CONFIG)
+		var fresh: RefCounted = SimWorld.new(MATCH_CONFIG)
 		for bot: Dictionary in world.mages.slice(1):
 			moved += int(bot.pos.distance_to(fresh.mages[bot.id].pos) > 1.0)
-		for any: Dictionary in world.mages:
-			damaged += int(any.hp < SimWorld.MAX_HP)
-		print("posição: bots que andaram = ", moved, " · magos feridos = ", damaged)
-		if moved < 3 or damaged == 0:
-			_fail("os bots não andaram ou não lutaram")
+		print("posição: bots que andaram = ", moved, " · raio da arena = ", world.arena_radius)
+		if moved < 3 or world.arena_radius >= world.initial_arena_radius:
+			_fail("os bots não andaram ou a arena não encolheu")
+	elif _frame > 1040 and _round_end_frame == 0 and world.phase != SimWorld.PHASE_ROUND:
+		_round_end_frame = _frame
+	elif _round_end_frame > 0 and _frame == _round_end_frame + 30:
+		_save("round_end.png")
+		print("posição: rodada acabou no quadro ", _round_end_frame, " · vencedor = ", world.round_winner,
+			" · placar = ", world.scores)
+	elif _round_end_frame > 0 and world.phase == SimWorld.PHASE_MATCH_END:
+		_save("match_end.png")
+		print("posição: partida acabou · vencedor = ", world.match_winner)
 		quit(1 if _failed else 0)
+	elif _frame == 2200:
+		_fail("a partida não acabou a tempo")
+		quit(1)
 	return false
 
 

@@ -170,3 +170,29 @@ func _match(seed_value: int) -> String:
 			commands.append_array(bot.think(world))
 		world.step(commands)
 	return var_to_str(world.mages)
+
+
+func test_entre_inimigos_a_mesma_distancia_o_alvo_varia() -> void:
+	var right := 0
+	var left := 0
+	for seed_value in 60:
+		var world := SimWorld.new({"mage_count": 3})
+		world.mages[0].pos = Vector2.ZERO
+		world.mages[1].pos = Vector2(8, 0)
+		world.mages[2].pos = Vector2(-8, 0)
+		var casts := _of_type(Bot.new(0, seed_value).think(world), "cast")
+		if casts[0].target.x > 0.0:
+			right += 1
+		else:
+			left += 1
+	check(right > 10 and left > 10, "não persegue sempre o mesmo (%d à direita, %d à esquerda)" % [right, left])
+
+
+func test_inimigo_claramente_mais_perto_e_o_alvo() -> void:
+	for seed_value in 30:
+		var world := SimWorld.new({"mage_count": 3})
+		world.mages[0].pos = Vector2.ZERO
+		world.mages[1].pos = Vector2(10, 0)
+		world.mages[2].pos = Vector2(-5, 0)
+		var casts := _of_type(Bot.new(0, seed_value).think(world), "cast")
+		check(casts[0].target.x < 0.0, "mira no mais próximo (semente %d)" % seed_value)
