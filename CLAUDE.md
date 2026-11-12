@@ -4,6 +4,7 @@ Arena brawler 3D de magos para PC: magias de empurrão, plataforma que encolhe s
 Jogo **original** inspirado no gênero dos mods de arena de magos — nunca copiar nomes, personagens, arte, sons ou mapas de jogos existentes.
 
 Stack: TypeScript, Three.js, Vite, Vitest. Empacotamento desktop (Electron) vem na issue 011.
+Jogo comercial autopublicado (site próprio, talvez Steam): só usar assets e dependências com licença para uso comercial, registrados em `docs/CREDITS.md`.
 
 ## Comandos
 

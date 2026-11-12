@@ -20,6 +20,8 @@ Jogo 3D original. 2 a 8 magos numa plataforma circular cercada de lava. Magias c
 11. Como jogador, tenho menu, opções de vídeo/áudio e teclas configuráveis.
 12. Como jogador, instalo e rodo o jogo no Windows como um executável.
 13. Como jogador, jogo online com amigos (fase posterior).
+14. Como interessado, conheço o jogo num site próprio, com trailer, capturas e download/compra.
+15. Como jogador, encontro e compro o jogo na Steam (possível, a decidir).
 
 ## Decisões de implementação
 - **Stack**: TypeScript + Three.js + Vite; desktop via Electron. Escolhida por ser totalmente testável e verificável em sessões de agente (testes headless + navegador).
@@ -28,6 +30,13 @@ Jogo 3D original. 2 a 8 magos numa plataforma circular cercada de lava. Magias c
 - **Magias** definidas como dados (tabela) + poucos comportamentos (projétil, área, teleporte, gancho, escudo), para a loja e o balanceamento serem só números.
 - **Multiplayer**: servidor autoritativo rodando a mesma `src/sim`, WebSocket, predição no cliente. Só depois do jogo solo estar divertido.
 - **Visual**: câmera de cima com perspectiva, luz direcional com sombras, personagens estilizados low-poly, efeitos de partículas e bloom. Arte própria ou de licença livre (CC0), sempre registrada em `docs/CREDITS.md`.
+
+## Distribuição
+Jogo comercial autopublicado para PC (Windows primeiro). Canal principal: site próprio com download do instalador. Steam é uma possibilidade futura, então nada pode impedi-la:
+- Todo asset (modelos, sons, fontes, música) precisa de licença que permita **uso comercial**; registrar origem e licença em `docs/CREDITS.md`. Dependências de código só com licenças permissivas (MIT/BSD/Apache).
+- Nome, magias, personagens e arte 100% próprios; verificar disponibilidade do nome final (marca, domínio, Steam) antes de divulgar — "Arcane Arena" é nome de trabalho.
+- Electron é compatível com Steam (integração Steamworks via biblioteca nativa, overlay, conquistas) — tratar numa issue própria.
+- Instalador assinado e atualização automática entram junto com o site.
 
 ## Conjunto inicial de magias (nomes próprios)
 Brasa (projétil), Passo Etéreo (teleporte curto), Vendaval (empurrão em área), Corrente (puxa o alvo), Égide (reflete projéteis), Cometa (área com atraso), Fagulha Teleguiada (projétil que persegue).

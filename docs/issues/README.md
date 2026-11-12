@@ -18,3 +18,5 @@ AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário ante
 | 011 | Executável de PC (Electron, build Windows) | AFK | 005 | aberta |
 | 012 | Menu, opções e teclas configuráveis | AFK | 007 | aberta |
 | 013 | Multiplayer online | HITL | 007 | aberta |
+| 014 | Site do jogo, instalador assinado e atualização automática | HITL | 011 | aberta |
+| 015 | Steam: página, Steamworks, build e conquistas | HITL | 011, 012 | aberta |
