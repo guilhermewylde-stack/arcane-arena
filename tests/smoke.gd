@@ -191,7 +191,12 @@ func _process(_delta: float) -> bool:
 
 ## Menu principal: aparece ao abrir o jogo, com o mundo parado; Enter começa a partida.
 func _step_main_menu() -> void:
-	if _frame == -10:
+	if _frame == -25:
+		_main.menu.show_mode("options")
+	elif _frame == -18:
+		_save("options.png")
+		_key(KEY_ESCAPE, true)
+	elif _frame == -10:
 		_save("menu.png")
 		if not _main.menu.visible or _main.menu.mode != "main" or _main.world.tick != 0:
 			_fail("o jogo não abriu parado no menu principal")

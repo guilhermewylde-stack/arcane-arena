@@ -21,7 +21,7 @@ AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário ante
 | 013 | Multiplayer online | HITL | 007 | aberta |
 | 014 | Site do jogo, instalador assinado e atualização automática | HITL | 011 | aberta |
 | 015 | Steam: página, Steamworks, build e conquistas | HITL | 011, 012 | aberta |
-| 016 | Opções de vídeo no menu | AFK | 011, 012 | aberta |
+| 016 | Opções de vídeo no menu | AFK | 011, 012 | concluída |
 | 017 | Teclas configuráveis | AFK | 012 | aberta |
 
-Ordem sugerida das AFK que restam: 016 → 017. A 010 (áudio) inclui as opções de áudio do menu.
+AFK que resta: 017. A 010 (áudio) inclui as opções de áudio do menu.

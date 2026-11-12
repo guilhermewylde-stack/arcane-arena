@@ -52,6 +52,9 @@ func _ready() -> void:
 	menu.resume_requested.connect(func() -> void: menu.hide())
 	menu.main_menu_requested.connect(func() -> void: menu.show_mode(Menu.MODE_MAIN))
 	menu.quit_requested.connect(func() -> void: get_tree().quit())
+	menu.settings_changed.connect(_change_settings)
+	menu.settings = _settings
+	menu.screen_size = DisplayServer.screen_get_size()
 	start_match(menu.setup)
 	menu.show_mode(Menu.MODE_MAIN)
 	view = ArenaView.new(world.arena_radius)
@@ -71,16 +74,16 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and event.keycode == KEY_F11:
-		_settings.fullscreen = DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN
-		Settings.apply(_settings)
-		Settings.save_to(Settings.PATH, _settings)
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F11:
+		menu.adjust_setting("fullscreen", 1)
 		return
 	if menu.visible:
 		# Com o menu aberto o jogo não recebe entrada: Esc fecha a pausa, Enter começa a partida.
 		if event is InputEventKey and event.pressed and not event.echo:
 			if event.keycode == KEY_ESCAPE and menu.mode == Menu.MODE_PAUSE:
 				menu.hide()
+			elif event.keycode == KEY_ESCAPE and menu.mode == Menu.MODE_OPTIONS:
+				menu.back()
 			elif (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER) and menu.mode == Menu.MODE_MAIN:
 				start_match(menu.setup)
 		return
@@ -123,6 +126,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode in SLOT_KEYS \
 			and not view.is_third_person():
 		cast_slot(SLOT_KEYS.find(event.keycode), get_viewport().get_mouse_position())
+
+
+## Uma opção de janela mudou (menu ou F11): vale na hora e fica salva.
+func _change_settings(settings: Dictionary) -> void:
+	_settings = settings
+	Settings.apply(_settings)
+	Settings.save_to(Settings.PATH, _settings)
 
 
 ## Começa a partida escolhida no menu e guarda a escolha para a próxima vez que o jogo abrir.

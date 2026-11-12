@@ -7,6 +7,10 @@ const SECTION := "window"
 const DEFAULTS := {"fullscreen": false, "width": 1600, "height": 900, "vsync": true}
 const MIN_SIZE := Vector2i(960, 540)
 const MAX_SIZE := Vector2i(7680, 4320)
+const COMMON_SIZES: Array[Vector2i] = [
+	Vector2i(960, 540), Vector2i(1280, 720), Vector2i(1366, 768), Vector2i(1600, 900),
+	Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3840, 2160),
+]
 
 
 ## Devolve só as chaves conhecidas, com tipo certo e resolução dentro dos limites.
@@ -18,6 +22,39 @@ static func sanitize(raw: Dictionary) -> Dictionary:
 	clean.width = clampi(clean.width, MIN_SIZE.x, MAX_SIZE.x)
 	clean.height = clampi(clean.height, MIN_SIZE.y, MAX_SIZE.y)
 	return clean
+
+
+## Resoluções de janela oferecidas no menu: as comuns que cabem no monitor (da menor à maior).
+static func resolutions(screen_size: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for size: Vector2i in COMMON_SIZES:
+		if size.x <= screen_size.x and size.y <= screen_size.y:
+			out.append(size)
+	if out.is_empty():
+		out.append(MIN_SIZE)
+	return out
+
+
+## Cópia das opções com um campo andado `step` casas: liga/desliga para `fullscreen` e `vsync`;
+## `resolution` anda pela lista de `resolutions(screen_size)`, sem dar a volta.
+static func adjust(settings: Dictionary, key: String, step: int, screen_size: Vector2i) -> Dictionary:
+	var out := sanitize(settings)
+	if key != "resolution":
+		out[key] = not out[key]
+		return out
+	var options := resolutions(screen_size)
+	var area: int = out.width * out.height
+	# Posição na lista: a primeira opção que não é menor que a atual.
+	var index := options.size() - 1
+	for i in options.size():
+		if options[i].x * options[i].y >= area:
+			index = i
+			break
+	if options[index] == Vector2i(out.width, out.height) or step < 0:
+		index = clampi(index + step, 0, options.size() - 1)
+	out.width = options[index].x
+	out.height = options[index].y
+	return out
 
 
 ## Lê as opções; arquivo ausente ou quebrado dá os padrões.
