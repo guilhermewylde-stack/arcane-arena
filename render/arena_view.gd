@@ -21,7 +21,7 @@ const BAR_SIZE := Vector2(64, 8)
 const HUD_BAR_SIZE := Vector2(360, 22)
 const BAR_BACK := Color(0.05, 0.03, 0.06, 0.85)
 ## Altura (acima do chão) onde a barra de vida fica ancorada: logo acima do chapéu.
-const BAR_ANCHOR_HEIGHT := 2.75
+const BAR_ANCHOR_HEIGHT := 3.05
 ## Quanto o mago afunda quando está na lava, e até onde desce ao morrer.
 const LAVA_SINK := -0.9
 const DEATH_SINK := -3.2
@@ -201,7 +201,7 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 	_draw_bursts(delta)
 
 	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
-	_lava_material.set_shader_parameter("energy", 0.8 + pulse * 0.1)
+	_lava_material.set_shader_parameter("energy", 0.95 + pulse * 0.15)
 	_rock_material.set_shader_parameter("edge_radius", world.arena_radius)
 	_rock_material.set_shader_parameter("pulse", 0.5 + 0.5 * sin(_time * 4.0))
 
@@ -289,7 +289,7 @@ func _create_hazard(hazard: Dictionary, spell: Dictionary) -> Dictionary:
 	var warn := Fx.flat_material(spell.color)
 	var ring := _add_mesh(_ring_mesh(spell.radius - 0.25, spell.radius), warn, self)
 	ring.position = Vector3(hazard.pos.x, 0.04, hazard.pos.y)
-	var glow := Fx.glow_material(spell.color.darkened(0.2), 1.2)
+	var glow := Fx.glow_material(spell.color.darkened(0.35), 0.7)
 	var rock_mesh := SphereMesh.new()
 	rock_mesh.radius = 0.8
 	rock_mesh.height = 1.6
@@ -583,41 +583,47 @@ func _create_spell_icon(spell_id: String, key_label: String) -> ColorRect:
 
 
 func _build_environment(arena_radius: float) -> void:
-	# Fantasia clara: dia de céu azul, sol quente, cores vivas. A lava é só o perigo, não a luz da cena.
+	# Fantasia semi-realista: fim de tarde, sol baixo e quente, sombras longas, cores terrosas.
 	var sky_material := ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Color("3d7fd6")
-	sky_material.sky_horizon_color = Color("cfe4f7")
-	sky_material.ground_bottom_color = Color("c9783a")
-	sky_material.ground_horizon_color = Color("f0c9a0")
+	sky_material.sky_top_color = Color("3c5578")
+	sky_material.sky_horizon_color = Color("d6ae8a")
+	sky_material.ground_bottom_color = Color("2a1a14")
+	sky_material.ground_horizon_color = Color("b98564")
 	var sky := Sky.new()
 	sky.sky_material = sky_material
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("dfe6ff")
-	env.ambient_light_energy = 0.4
+	env.ambient_light_color = Color("8d98b4")
+	env.ambient_light_energy = 0.42
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.ssao_enabled = true
 	env.glow_enabled = true
-	env.glow_intensity = 0.35
-	env.glow_hdr_threshold = 1.1
+	env.glow_intensity = 0.45
+	env.glow_hdr_threshold = 1.0
+	env.fog_enabled = true
+	env.fog_light_color = Color("a8846c")
+	env.fog_density = 0.0018
+	env.fog_sky_affect = 0.15
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.15
+	env.adjustment_contrast = 1.06
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
-	# Sol quente de cima (forma e sombra) e um leve clarão da lava de baixo.
+	# Sol baixo e dourado (forma e sombras longas) e o clarão da lava de baixo.
 	var sun := DirectionalLight3D.new()
-	sun.light_color = Color("fff2d6")
-	sun.light_energy = 0.95
+	sun.light_color = Color("ffcb96")
+	sun.light_energy = 1.25
 	sun.shadow_enabled = true
+	sun.shadow_blur = 1.5
 	sun.directional_shadow_max_distance = arena_radius * 4.0
-	sun.rotation_degrees = Vector3(-55, -40, 0)
+	sun.rotation_degrees = Vector3(-34, -50, 0)
 	add_child(sun)
 	var underglow := DirectionalLight3D.new()
-	underglow.light_color = Color("ff7a2a")
-	underglow.light_energy = 0.25
+	underglow.light_color = Color("ff6a22")
+	underglow.light_energy = 0.4
 	underglow.rotation_degrees = Vector3(65, 30, 0)
 	add_child(underglow)
 
@@ -647,7 +653,7 @@ func _build_arena(arena_radius: float) -> void:
 
 	# Anéis decorativos para dar leitura de distância no chão.
 	var groove := StandardMaterial3D.new()
-	groove.albedo_color = Color("5f584c")
+	groove.albedo_color = Color("2e2a25")
 	for fraction: float in [0.33, 0.66, 0.98]:
 		var ring := _add_mesh(_ring_mesh(arena_radius * fraction - 0.12, arena_radius * fraction), groove, _arena_root)
 		ring.position.y = 0.01
@@ -671,7 +677,7 @@ func _build_arena(arena_radius: float) -> void:
 
 
 func _create_mage(id: int) -> MageView:
-	var root := MageView.new(MAGE_COLORS[id % MAGE_COLORS.size()], Spells.TABLE[Spells.AEGIS].color, _ring_mesh(0.72, 0.9, 48))
+	var root := MageView.new(MAGE_COLORS[id % MAGE_COLORS.size()], Spells.TABLE[Spells.AEGIS].color, _ring_mesh(0.72, 0.84, 48))
 	add_child(root)
 	_mages[id] = root
 	var bar := _create_bar(BAR_SIZE)

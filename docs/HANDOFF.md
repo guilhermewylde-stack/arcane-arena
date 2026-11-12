@@ -8,14 +8,14 @@ Comece rodando bash tools/setup_godot.sh.
 Todas as issues AFK estão concluídas; as abertas (010 áudio, 013 multiplayer, 014 site, 015 Steam) são HITL.
 Antes de codar, me faça as perguntas da issue que eu escolher abaixo e espere minhas respostas:
 Issue escolhida: <010 ou 013, ou "ajustes" para só corrigir o que achei jogando>
-Meu retorno depois de jogar o .exe: <o que achei do visual novo (cores, claridade, tamanho do mago), controles, câmera, balanceamento, bugs>
+Meu retorno depois de jogar o .exe: <o que achei do visual novo (magos, chão, lava, magias), controles, câmera, balanceamento, bugs>
 No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ```
 
 ## Estado atual
 - Motor: Godot 4.6, GDScript.
 - Concluídas: 001–009, 011, 012, 016, 017. Abertas (todas HITL): 010, 013, 014, 015.
-- Visual (009): direção **fantasia clara e colorida** (o usuário rejeitou a 1ª versão, sombria, e citou Magicka como referência de clima — seguir o clima, nunca copiar o visual); mago animado do KayKit (CC0) de manto na cor do jogador, lava de desenho, pedra com musgo, céu azul. Só foi visto no renderizador de software da nuvem.
+- Visual (009): direção **fantasia semi-realista, sem aspecto cartoon** (3ª tentativa: o usuário rejeitou a sombria e a clara/cartoon; a referência dele é Magicka — não reproduzir o estilo desse jogo, fazer visual próprio); mago de proporções naturais montado por código, lava com crosta e veios, pedra gasta, sol de fim de tarde. Só foi visto no renderizador de software da nuvem.
 - 126 testes passando (`bash tools/check.sh`); o CI do GitHub roda os testes e exporta o `.exe` a cada push.
 - O jogo abre no menu principal; a partida padrão é 1 jogador + 3 bots `normal`, primeiro a 3 rodadas. Todos começam só com Brasa.
 - **O usuário ainda não jogou nada à mão.** Tudo que é sensação (sensibilidade do mouse, câmera de ombro, distância da mira, dano, empurrão, preços, tempos) é chute inicial. O primeiro passo útil é ele baixar o `.exe` e contar o que achou.
@@ -23,7 +23,7 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ## Pendências do usuário
 - Baixar o `ArcaneArena.exe`: GitHub → aba Actions → última execução do "CI" → artefato `ArcaneArena-windows` (precisa estar logado). Confirmar que abre e roda (último item do aceite da 011). O Windows deve mostrar o aviso do SmartScreen, porque o `.exe` não é assinado (assinatura é a issue 014).
 - Para publicar uma release baixável sem login: criar uma tag `v*` (ex.: `git tag v0.1.0 && git push origin v0.1.0`). Esse caminho do workflow ainda não foi exercitado.
-- Olhar o visual novo no PC (Forward+) e dizer o que ajustar: claro demais ou não, musgo, brilho das magias, chapéu tapando a mira em 3ª pessoa.
+- Olhar o visual novo no PC (Forward+) e dizer o que ajustar: o que ainda incomoda (magos, chão, lava, magias). Se quiser acabamento de jogo comercial, decidir se compra/encomenda modelos e texturas.
 - Decidir a próxima issue HITL (010 áudio ou 013 multiplayer).
 
 ## Mapa rápido
@@ -56,7 +56,7 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ## Ideias anotadas (fora do escopo feito)
 - Em 3ª pessoa a câmera não tem inclinação vertical (o mouse vertical só move o retículo) e o mago vira para onde anda, não para onde mira.
 - Opções de áudio no menu entram junto com a 010. Sensibilidade do mouse (`MOUSE_TURN`, `MOUSE_AIM` em `main.gd`) ainda não é opção.
-- Visual: o Mago do KayKit é o mesmo para todos (só muda a cor); o pacote tem Cavaleiro, Bárbaro e Ladino se quisermos variar. Sem ícones de magia (a barra ainda é de quadrados coloridos) e sem arte de menu.
+- Visual: o mago é de primitivas (cones e esferas) com poses por código; um modelo esculpido e texturizado à mão seria o próximo salto. Sem ícones de magia (a barra ainda é de quadrados coloridos) e sem arte de menu.
 - A Fagulha Teleguiada orbita sem acertar um alvo colado. Com 7 magias e barra de 6, a 7ª comprada não entra na barra e não há como vender.
 - O jogador morto vira espectador (câmera no centro), sem trocar de alvo. Um jogador parado morre rápido: os bots miram quem está mais perto.
 - "Menu principal" na pausa deixa a partida parada ao fundo até "Jogar" começar outra.
@@ -70,8 +70,8 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 - O teste de fumaça não troca opções de janela: um `settings.cfg` com seção `window` faria as rodadas seguintes abrirem em 1600x900 (bem mais lentas). `main.gd` só aplica a janela se `Settings.has_saved()`.
 - O teste do arquivo de opções quebrado imprime um `ERROR: ConfigFile parse error` no `check.sh`: é esperado.
 - `tools/smoke.sh` falha (exit 1) se o log tiver `SCRIPT ERROR` ou `FALHA`; o log fica em `<pasta>/smoke.log`. Erros de ALSA/áudio são do contêiner.
-- Sites de assets (kenney.nl, quaternius.com, itch.io, opengameart.org) são bloqueados na rede da nuvem, mas repositórios **públicos do GitHub** podem ser clonados (`git clone` direto): o KayKit veio assim.
-- O modelo do mago (`MODEL_SCALE` 0.85) olha para +z, igual ao `facing`. Animações em laço (`Idle`, `Running_A`) são marcadas por código em `mage_view.gd`, porque o GLB vem sem laço.
+- Sites de assets (kenney.nl, quaternius.com, itch.io, opengameart.org) são bloqueados na rede da nuvem, mas repositórios **públicos do GitHub** podem ser clonados (`git clone` direto): o KayKit veio assim (depois removido).
+- O mago olha para +z, igual ao `facing`; a direita dele é -x (mão do cajado). Os nomes de animação de `MageAnim` (`Idle`, `Spellcast_Shoot`...) vêm do antigo modelo KayKit e hoje só nomeiam poses.
 - Os shaders precisam funcionar em Forward+ e em `gl_compatibility` (teste de fumaça): nada de recursos exclusivos de um deles.
 - Mago morto na pedra fica caído até a borda passar por ele; só afunda na lava.
 - Usar `preload` por caminho em vez de `class_name`. Um teste que não compila conta como falha.

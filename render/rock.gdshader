@@ -1,5 +1,5 @@
 shader_type spatial;
-// Plataforma de pedra clara: lajes com musgo. Perto da borda (que encolhe) a pedra chamusca e as
+// Plataforma de pedra gasta: lajes irregulares com grão e musgo nas juntas. Perto da borda (que encolhe) a pedra chamusca e as
 // juntas ficam incandescentes; as laterais brilham de baixo para cima, iluminadas pela lava.
 
 uniform float edge_radius = 18.0;
@@ -57,25 +57,31 @@ float soft_noise(vec2 p) {
 }
 
 void fragment() {
-	vec3 hot = vec3(1.0, 0.4, 0.05);
+	vec3 hot = vec3(1.0, 0.36, 0.05);
 	float top = step(0.5, world_normal.y);
-	vec2 cell = cells(world_pos.xz * 0.42);
-	float joint = 1.0 - smoothstep(0.0, 0.06, cell.x);
-	// Lajes de pedra clara, cada uma com um tom; musgo nas juntas e em manchas.
-	vec3 slab = mix(vec3(0.5, 0.44, 0.35), vec3(0.38, 0.37, 0.35), cell.y);
-	float moss_patch = smoothstep(0.56, 0.64, soft_noise(world_pos.xz * 0.22) * 0.7 + soft_noise(world_pos.xz * 0.9) * 0.3);
-	float moss = clamp(moss_patch * 0.8 + (1.0 - smoothstep(0.0, 0.16, cell.x)) * 0.55, 0.0, 1.0);
-	vec3 top_color = mix(slab, vec3(0.2, 0.36, 0.11), moss);
-	top_color = mix(top_color, vec3(0.17, 0.15, 0.12), joint * (1.0 - moss_patch));
+	vec2 cell = cells(world_pos.xz * 0.5);
+	float joint = 1.0 - smoothstep(0.0, 0.045, cell.x);
+	float broad = soft_noise(world_pos.xz * 0.35);
+	float mid = soft_noise(world_pos.xz * 2.1);
+	float fine = soft_noise(world_pos.xz * 9.0) * 0.6 + soft_noise(world_pos.xz * 31.0) * 0.4;
+	// Lajes gastas de pedra cinza-parda: manchas largas, grão fino e bordas escurecidas (dá relevo).
+	vec3 stone = mix(vec3(0.3, 0.285, 0.265), vec3(0.4, 0.365, 0.32), cell.y);
+	stone *= 0.62 + 0.35 * broad + 0.22 * mid + 0.2 * fine;
+	stone *= mix(0.6, 1.0, smoothstep(0.0, 0.2, cell.x));
+	// Musgo escuro só nas juntas, onde a pedra é mais úmida.
+	float moss = (1.0 - smoothstep(0.0, 0.14, cell.x)) * smoothstep(0.4, 0.65, broad);
+	vec3 top_color = mix(stone, vec3(0.1, 0.13, 0.06) * (0.7 + 0.6 * fine), moss * 0.85);
+	top_color = mix(top_color, vec3(0.045, 0.04, 0.036), joint);
 	// Perto da borda (que encolhe) a pedra fica chamuscada e as juntas acendem.
 	float r = length(world_pos.xz);
 	float near_edge = smoothstep(edge_radius - 3.5, edge_radius - 0.2, r);
-	top_color = mix(top_color, top_color * vec3(0.5, 0.4, 0.38), near_edge);
-	float top_glow = joint * near_edge * near_edge * (1.4 + pulse * 1.0);
-	// Laterais: rocha marrom com o clarão da lava subindo.
+	top_color = mix(top_color, top_color * vec3(0.45, 0.36, 0.34), near_edge);
+	float top_glow = joint * near_edge * near_edge * (1.0 + pulse * 0.8);
+	// Laterais: rocha bruta com o clarão da lava subindo.
 	float below = smoothstep(0.0, -1.6, world_pos.y);
-	vec3 side_color = vec3(0.22, 0.16, 0.13);
+	float rough = soft_noise(world_pos.xy * 3.0 + world_pos.zy * 2.0);
+	vec3 side_color = vec3(0.17, 0.14, 0.12) * (0.6 + 0.7 * rough);
 	ALBEDO = mix(side_color, top_color, top);
-	EMISSION = hot * mix(below * below * 0.9, top_glow, top);
-	ROUGHNESS = 0.9;
+	EMISSION = hot * mix(below * below * 1.1, top_glow, top);
+	ROUGHNESS = 0.95;
 }
