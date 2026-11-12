@@ -9,7 +9,14 @@ const Bot := preload("res://sim/bot.gd")
 const LOCAL_MAGE := 0
 const ZOOM_STEP := 0.08
 ## Partida local: o jogador (id 0) e 3 bots; vence quem ganhar 3 rodadas.
-const WORLD_CONFIG := {"mage_count": 4, "rounds_to_win": 3}
+## Até a loja existir (issue 007), todos começam com seis magias.
+const WORLD_CONFIG := {
+	"mage_count": 4,
+	"rounds_to_win": 3,
+	"loadout": [Spells.EMBER, Spells.BLINK, Spells.GALE, Spells.CHAIN, Spells.AEGIS, Spells.COMET],
+}
+## Teclas da barra de magias, na ordem dos espaços (ver `ArenaView.SLOT_LABELS`).
+const SLOT_KEYS: Array[Key] = [KEY_Q, KEY_W, KEY_E, KEY_R, KEY_D, KEY_F]
 const BOT_DIFFICULTY := "normal"
 const BOT_SEED := 20261
 
@@ -28,7 +35,7 @@ func _ready() -> void:
 	view = ArenaView.new(world.arena_radius)
 	add_child(view)
 	var hud := Label.new()
-	hud.text = "Botão direito: mover · Q: Brasa na direção do cursor · Scroll: zoom (visão de cima ↔ 3ª pessoa) · F11: tela cheia · F5: nova partida"
+	hud.text = "Botão direito: mover · Q W E R D F: magias na direção do cursor · Scroll: zoom (visão de cima ↔ 3ª pessoa) · F11: tela cheia · F5: nova partida"
 	hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
 	hud.add_theme_color_override("font_outline_color", Color.BLACK)
 	hud.add_theme_constant_override("outline_size", 4)
@@ -51,10 +58,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				view.zoom += ZOOM_STEP
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
 		restart()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_Q:
-		var aim: Variant = view.screen_to_ground(get_viewport().get_mouse_position())
-		if aim != null:
-			queue_command(SimWorld.cast_command(LOCAL_MAGE, Spells.EMBER, aim))
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode in SLOT_KEYS:
+		cast_slot(SLOT_KEYS.find(event.keycode), get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_F11:
 		var fullscreen := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
 		DisplayServer.window_set_mode(
@@ -71,6 +76,14 @@ func restart(config: Dictionary = WORLD_CONFIG) -> void:
 			_bots.append(Bot.new(mage.id, BOT_SEED + mage.id, BOT_DIFFICULTY))
 	_previous = world.snapshot_positions()
 	_pending.clear()
+
+
+## Lança a magia do espaço `slot` da barra do jogador na direção de um ponto da tela.
+func cast_slot(slot: int, screen_pos: Vector2) -> void:
+	var spell_ids: Array = world.get_mage(LOCAL_MAGE).spells.keys()
+	var aim: Variant = view.screen_to_ground(screen_pos)
+	if slot < spell_ids.size() and aim != null:
+		queue_command(SimWorld.cast_command(LOCAL_MAGE, spell_ids[slot], aim))
 
 
 ## Toda entrada (jogador, bots, rede) entra no mundo por aqui.

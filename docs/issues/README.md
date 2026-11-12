@@ -11,7 +11,7 @@ AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário ante
 | 003 | Primeira magia: Brasa (projétil, dano, empurrão) | AFK | 002 | concluída |
 | 004 | Bots | AFK | 003 | concluída |
 | 005 | Rodadas: arena que encolhe, vitória, placar | AFK | 004 | concluída |
-| 006 | Barra de magias e mais 6 magias | AFK | 003 | aberta |
+| 006 | Barra de magias e mais 6 magias | AFK | 003 | concluída |
 | 007 | Ouro e loja entre rodadas | AFK | 005, 006 | aberta |
 | 008 | Controles de 3ª pessoa (WASD + mira) | AFK | 003 | aberta |
 | 009 | Passe visual: modelos, animações, partículas, lava, bloom | HITL | 006 | aberta |

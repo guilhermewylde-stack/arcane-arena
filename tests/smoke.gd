@@ -27,7 +27,7 @@ func _process(_delta: float) -> bool:
 	if _frame == 1:
 		# Primeira parte: mundo livre (sem rodadas) e os outros magos parados, como bonecos
 		# de treino. Só aqui, e não em _initialize, porque o _ready do jogo já rodou.
-		_main.restart({"mage_count": 4})
+		_main.restart({"mage_count": 4, "loadout": Spells.TABLE.keys()})
 		_main.bots_enabled = false
 	var world: RefCounted = _main.world
 	var dummy: Dictionary = world.mages[2]
@@ -54,13 +54,36 @@ func _process(_delta: float) -> bool:
 			_fail("o mago não chegou ao alvo")
 		if not world.is_in_lava(dummy.pos):
 			_fail("o boneco não foi empurrado para a lava")
+		# Mostra as outras magias: escudo em si, Cometa no boneco 1, Corrente no boneco 3.
+		_main.view.zoom = 1.0
+		for cast: Array in [[Spells.AEGIS, pos], [Spells.GALE, pos],
+				[Spells.COMET, world.mages[1].pos], [Spells.CHAIN, world.mages[3].pos]]:
+			_main.queue_command(SimWorld.cast_command(0, cast[0], cast[1]))
+	elif _frame == 340:
+		_save("spells.png")
+		if not world.is_shielded(0) or world.hazards.is_empty():
+			_fail("escudo ou Cometa não estão ativos")
+	elif _frame == 425:
+		print("posição: boneco 1 vida ", world.mages[1].hp, " · boneco 3 em ", world.mages[3].pos)
+		if world.mages[1].hp >= SimWorld.MAX_HP or world.mages[3].pos.x < -9.0:
+			_fail("Cometa não acertou ou Corrente não puxou")
+		# Fagulha lançada meio torta (sem a curva, erraria) e depois o teleporte.
+		var me: Vector2 = world.mages[0].pos
+		_main.queue_command(SimWorld.cast_command(0, Spells.HOMING, me + (world.mages[3].pos - me).rotated(0.5)))
+		_main.queue_command(SimWorld.cast_command(0, Spells.BLINK, Vector2(-5, -6)))
+	elif _frame == 440:
+		_save("homing.png")
+	elif _frame == 500:
+		print("posição: após Passo Etéreo ", world.mages[0].pos, " · boneco 3 vida ", world.mages[3].hp)
+		if world.mages[0].pos.y > -5.0 or world.mages[3].hp > SimWorld.MAX_HP - 10.0:
+			_fail("Passo Etéreo não teleportou ou a Fagulha não achou o boneco")
 		# Anda para a lava e fica lá até morrer.
 		_main.view.zoom = 0.45
 		_main.queue_command(SimWorld.move_command(0, Vector2(-world.arena_radius - 3.0, 0)))
-	elif _frame == 590:
+	elif _frame == 770:
 		_save("lava.png")
 		print("posição na lava: vida ", world.mages[0].hp)
-	elif _frame == 740:
+	elif _frame == 920:
 		_save("dead.png")
 		var dead: bool = not world.mages[0].alive
 		print("posição: morto na lava = ", dead)
@@ -71,13 +94,13 @@ func _process(_delta: float) -> bool:
 		_main.restart(MATCH_CONFIG)
 		_main.bots_enabled = true
 		_main.view.zoom = 1.0
-	elif _frame == 800:
+	elif _frame == 980:
 		_save("countdown.png")
 		var mage: Dictionary = world.mages[0]
 		print("posição após reiniciar: ", mage.pos, " vivo = ", mage.alive, " fase = ", world.phase)
 		if not (mage.alive and mage.hp == SimWorld.MAX_HP and world.phase == SimWorld.PHASE_COUNTDOWN):
 			_fail("a partida não começou em contagem com o mago inteiro")
-	elif _frame == 1040:
+	elif _frame == 1220:
 		_save("round.png")
 		var moved := 0
 		var fresh: RefCounted = SimWorld.new(MATCH_CONFIG)
@@ -86,7 +109,7 @@ func _process(_delta: float) -> bool:
 		print("posição: bots que andaram = ", moved, " · raio da arena = ", world.arena_radius)
 		if moved < 3 or world.arena_radius >= world.initial_arena_radius:
 			_fail("os bots não andaram ou a arena não encolheu")
-	elif _frame > 1040 and _round_end_frame == 0 and world.phase != SimWorld.PHASE_ROUND:
+	elif _frame > 1220 and _round_end_frame == 0 and world.phase != SimWorld.PHASE_ROUND:
 		_round_end_frame = _frame
 	elif _round_end_frame > 0 and _frame == _round_end_frame + 30:
 		_save("round_end.png")
@@ -96,7 +119,7 @@ func _process(_delta: float) -> bool:
 		_save("match_end.png")
 		print("posição: partida acabou · vencedor = ", world.match_winner)
 		quit(1 if _failed else 0)
-	elif _frame == 2200:
+	elif _frame == 2400:
 		_fail("a partida não acabou a tempo")
 		quit(1)
 	return false

@@ -20,6 +20,10 @@ const DEATH_SINK := -3.2
 ## Altura em que os projéteis voam (na mão/cajado do mago).
 const PROJECTILE_HEIGHT := 1.1
 const ICON_SIZE := 52.0
+## Rótulos das teclas da barra de magias, na ordem dos espaços.
+const SLOT_LABELS: Array[String] = ["Q", "W", "E", "R", "D", "F"]
+## Altura de onde o Cometa começa a cair.
+const COMET_HEIGHT := 22.0
 
 var zoom := 1.0
 
@@ -40,6 +44,11 @@ var _projectiles := {}
 ## Clarões de impacto em andamento: { node: MeshInstance3D, life: float (1 → 0), size: float }.
 var _bursts: Array[Dictionary] = []
 var _spell_icons := {}
+var _spell_bar: HBoxContainer
+var _shown_spells: Array = []
+var _shields := {}
+## Avisos de área prestes a explodir: { id: { ring: MeshInstance3D, rock: MeshInstance3D, total: int } }.
+var _hazards := {}
 var _arena_root := Node3D.new()
 var _arena_radius: float
 var _banner: Label
@@ -56,7 +65,7 @@ func _init(arena_radius: float) -> void:
 	add_child(_camera)
 	add_child(_hud)
 	_build_hud_bar()
-	_build_spell_icon(Spells.EMBER)
+	_build_spell_bar()
 	_build_match_hud()
 
 
@@ -75,15 +84,23 @@ func show_move_marker(at: Vector2) -> void:
 	_marker_life = 1.0
 
 
-## Mostra o que a simulação relatou num `step` (acertos, projéteis que se apagaram).
+## Mostra o que a simulação relatou num `step` (acertos, explosões, teleportes...).
 func show_events(events: Array) -> void:
 	for event: Dictionary in events:
 		var color: Color = Spells.TABLE[event.spell].color
+		var at := Vector3(event.pos.x, PROJECTILE_HEIGHT, event.pos.y)
 		match event.type:
 			"hit":
-				_spawn_burst(Vector3(event.pos.x, PROJECTILE_HEIGHT, event.pos.y), color, 1.6)
+				_spawn_burst(at, color, 1.6)
 			"fizzle":
-				_spawn_burst(Vector3(event.pos.x, PROJECTILE_HEIGHT, event.pos.y), color, 0.6)
+				_spawn_burst(at, color, 0.6)
+			"reflect":
+				_spawn_burst(at, color, 2.0)
+			"blink":
+				_spawn_burst(Vector3(event.from.x, PROJECTILE_HEIGHT, event.from.y), color, 1.2)
+				_spawn_burst(at, color, 1.8)
+			"nova", "explosion":
+				_spawn_burst(Vector3(event.pos.x, 0.2, event.pos.y), color, event.radius)
 
 
 ## Desenha um quadro. `previous` é o `snapshot_positions()` do tick anterior e `alpha` (0..1)
@@ -112,8 +129,10 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 		node.visible = mage.alive or node.position.y > DEATH_SINK + 0.05
 		node.position = Vector3(pos.x, move_toward(node.position.y, sink, delta * 4.0), pos.y)
 		node.rotation.y = lerp_angle(node.rotation.y, mage.facing, minf(1.0, delta * 14.0))
+		_shields[mage.id].visible = world.is_shielded(mage.id)
 
 	_draw_projectiles(world, previous.projectiles, alpha)
+	_draw_hazards(world, alpha)
 	_draw_bursts(delta)
 
 	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
@@ -157,9 +176,52 @@ func _draw_health(world: RefCounted, local_mage_id: int) -> void:
 	if not local.is_empty():
 		_set_fill(_hud_bar, local.hp / world.MAX_HP)
 		_hud_label.text = "%d / %d" % [ceili(local.hp), int(world.MAX_HP)] if local.alive else "Morto"
-	for spell_id: String in _spell_icons:
-		var shade: ColorRect = _spell_icons[spell_id]
-		shade.size.y = ICON_SIZE * world.cooldown_fraction(local_mage_id, spell_id)
+	if not local.is_empty():
+		if local.spells.keys() != _shown_spells:
+			_fill_spell_bar(local.spells.keys())
+		for spell_id: String in _spell_icons:
+			var shade: ColorRect = _spell_icons[spell_id]
+			shade.size.y = ICON_SIZE * world.cooldown_fraction(local_mage_id, spell_id)
+
+
+## Área marcada no chão (anel que pulsa) e a pedra caindo até o momento do impacto.
+func _draw_hazards(world: RefCounted, alpha: float) -> void:
+	var seen := {}
+	for hazard: Dictionary in world.hazards:
+		seen[hazard.id] = true
+		var spell: Dictionary = Spells.stats(hazard.spell, hazard.level)
+		if not _hazards.has(hazard.id):
+			_hazards[hazard.id] = _create_hazard(hazard, spell)
+		var entry: Dictionary = _hazards[hazard.id]
+		var left: float = clampf((hazard.ticks_left - alpha) / entry.total, 0.0, 1.0)
+		entry.rock.position.y = PROJECTILE_HEIGHT + left * COMET_HEIGHT
+		entry.ring.material_override.albedo_color.a = 0.45 + 0.4 * sin(_time * 18.0)
+	for id: int in _hazards.keys():
+		if not seen.has(id):
+			_hazards[id].ring.queue_free()
+			_hazards[id].rock.queue_free()
+			_hazards.erase(id)
+
+
+func _create_hazard(hazard: Dictionary, spell: Dictionary) -> Dictionary:
+	var warn := StandardMaterial3D.new()
+	warn.albedo_color = spell.color
+	warn.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	warn.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var ring := _add_mesh(_ring_mesh(spell.radius - 0.25, spell.radius), warn, self)
+	ring.position = Vector3(hazard.pos.x, 0.04, hazard.pos.y)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = spell.color
+	glow.emission_enabled = true
+	glow.emission = spell.color
+	glow.emission_energy_multiplier = 4.0
+	var rock_mesh := SphereMesh.new()
+	rock_mesh.radius = 0.8
+	rock_mesh.height = 1.6
+	var rock := _add_mesh(rock_mesh, glow, self)
+	rock.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	rock.position = Vector3(hazard.pos.x, COMET_HEIGHT, hazard.pos.y)
+	return {"ring": ring, "rock": rock, "total": maxi(1, hazard.ticks_left)}
 
 
 func _draw_projectiles(world: RefCounted, previous: Dictionary, alpha: float) -> void:
@@ -316,25 +378,48 @@ func _build_match_hud() -> void:
 	_hud.add_child(_banner)
 
 
+func _build_spell_bar() -> void:
+	_spell_bar = HBoxContainer.new()
+	_spell_bar.add_theme_constant_override("separation", 8)
+	_spell_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_spell_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_spell_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_spell_bar.offset_bottom = -72.0
+	_spell_bar.offset_top = -72.0
+	_hud.add_child(_spell_bar)
+
+
+## Refaz a barra: um ícone por magia do jogador, na ordem das teclas.
+func _fill_spell_bar(spell_ids: Array) -> void:
+	_shown_spells = spell_ids.duplicate()
+	_spell_icons.clear()
+	for child in _spell_bar.get_children():
+		_spell_bar.remove_child(child)
+		child.queue_free()
+	for slot: int in mini(spell_ids.size(), SLOT_LABELS.size()):
+		_spell_icons[spell_ids[slot]] = _create_spell_icon(spell_ids[slot], SLOT_LABELS[slot])
+
+
 ## Ícone da magia com a tecla; uma sombra desce de cima enquanto a recarga corre.
-func _build_spell_icon(spell_id: String) -> void:
+## Devolve a sombra, que é o que muda a cada quadro.
+func _create_spell_icon(spell_id: String, key_label: String) -> ColorRect:
 	var spell: Dictionary = Spells.TABLE[spell_id]
 	var icon := ColorRect.new()
 	icon.color = BAR_BACK
-	icon.size = Vector2.ONE * ICON_SIZE
-	icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE)
-	icon.position = Vector2(icon.position.x + HUD_BAR_SIZE.x * 0.5 + 44.0, icon.position.y - 40.0)
+	icon.custom_minimum_size = Vector2.ONE * ICON_SIZE
 	var gem := ColorRect.new()
-	gem.color = spell.color
+	gem.color = spell.color.darkened(0.15)
 	gem.position = Vector2(3, 3)
 	gem.size = Vector2.ONE * (ICON_SIZE - 6.0)
+	gem.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.add_child(gem)
 	var shade := ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.72)
 	shade.size = Vector2(ICON_SIZE, 0)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.add_child(shade)
 	var key := Label.new()
-	key.text = spell.key
+	key.text = key_label
 	key.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	key.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -343,8 +428,8 @@ func _build_spell_icon(spell_id: String) -> void:
 	key.add_theme_constant_override("outline_size", 6)
 	icon.add_child(key)
 	icon.tooltip_text = spell.name
-	_hud.add_child(icon)
-	_spell_icons[spell_id] = shade
+	_spell_bar.add_child(icon)
+	return shade
 
 
 func _build_environment(arena_radius: float) -> void:
@@ -453,6 +538,21 @@ func _create_mage(id: int) -> Node3D:
 	orb_mesh.radius = 0.13
 	orb_mesh.height = 0.26
 	_add_mesh(orb_mesh, glow, root).position = Vector3(0.55, 1.98, 0.25)
+
+	var bubble_material := StandardMaterial3D.new()
+	bubble_material.albedo_color = Color(Spells.TABLE[Spells.AEGIS].color, 0.35)
+	bubble_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bubble_material.emission_enabled = true
+	bubble_material.emission = Spells.TABLE[Spells.AEGIS].color
+	bubble_material.emission_energy_multiplier = 0.8
+	var bubble_mesh := SphereMesh.new()
+	bubble_mesh.radius = 1.5
+	bubble_mesh.height = 3.0
+	var bubble := _add_mesh(bubble_mesh, bubble_material, root)
+	bubble.position.y = 1.1
+	bubble.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bubble.visible = false
+	_shields[id] = bubble
 
 	add_child(root)
 	_mages[id] = root

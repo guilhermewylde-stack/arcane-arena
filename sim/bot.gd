@@ -26,6 +26,10 @@ const DODGE_REACTION := 0.7
 const DODGE_MARGIN := 0.5
 const DODGE_STEP := 3.0
 const TARGET_TIE_MARGIN := 1.0
+## O bot só puxa com Corrente se estiver ao menos isto mais longe do centro que o inimigo.
+const PULL_ADVANTAGE := 2.0
+## Lança a magia em volta de si quando o inimigo está dentro desta fração do raio dela.
+const NOVA_RANGE_FRACTION := 0.8
 
 var mage_id: int
 var difficulty: Dictionary
@@ -46,15 +50,21 @@ func think(world: RefCounted) -> Array:
 	var commands := []
 	var enemy := _nearest_enemy(world, me)
 
-	if not enemy.is_empty() and world.cooldown_fraction(mage_id, Spells.EMBER) == 0.0:
-		var to_enemy: Vector2 = enemy.pos - me.pos
-		if to_enemy.length() <= Spells.TABLE[Spells.EMBER].range * CAST_RANGE_FRACTION:
-			var error := _rng.randf_range(-difficulty.aim_error, difficulty.aim_error)
-			commands.append(SimWorld.cast_command(mage_id, Spells.EMBER, me.pos + to_enemy.rotated(error)))
+	var threat := _incoming(world, me)
+	for spell_id: String in me.spells:
+		if world.cooldown_fraction(mage_id, spell_id) > 0.0:
+			continue
+		var target: Variant = _spell_target(world, me, enemy, threat, Spells.stats(spell_id, me.spells[spell_id]))
+		if target != null:
+			commands.append(SimWorld.cast_command(mage_id, spell_id, target))
 
 	var safe_radius: float = world.arena_radius * SAFE_FRACTION
 	var roam_radius: float = world.arena_radius * ROAM_FRACTION
-	var dodge: Variant = _dodge_target(world, me, safe_radius) if difficulty.dodges else null
+	var dodge: Variant = null
+	if difficulty.dodges and not threat.is_empty():
+		dodge = me.pos + threat.side * DODGE_STEP
+		if dodge.length() > safe_radius:
+			dodge = me.pos - threat.side * DODGE_STEP
 	if dodge != null:
 		commands.append(SimWorld.move_command(mage_id, dodge))
 	elif me.pos.length() > safe_radius:
@@ -82,14 +92,44 @@ func _nearest_enemy(world: RefCounted, me: Dictionary) -> Dictionary:
 	return tied[0] if tied.size() == 1 else tied[_rng.randi() % tied.size()]
 
 
-## Para onde fugir do projétil mais urgente que vai acertar o bot, ou null se não há perigo.
-func _dodge_target(world: RefCounted, me: Dictionary, safe_radius: float) -> Variant:
-	var soonest := INF
-	var target: Variant = null
+## Onde lançar a magia agora, ou null se não vale a pena. Uma regra por comportamento.
+func _spell_target(world: RefCounted, me: Dictionary, enemy: Dictionary, threat: Dictionary, spell: Dictionary) -> Variant:
+	var to_enemy: Vector2 = Vector2.ZERO if enemy.is_empty() else enemy.pos - me.pos
+	match spell.behavior:
+		"projectile":
+			if enemy.is_empty() or to_enemy.length() > spell.range * CAST_RANGE_FRACTION:
+				return null
+			# Puxão só compensa se arrasta o inimigo para fora, na direção da lava.
+			if spell.has("pull") and me.pos.length() < enemy.pos.length() + PULL_ADVANTAGE:
+				return null
+			return me.pos + to_enemy.rotated(_aim_error())
+		"delayed_area":
+			if enemy.is_empty() or to_enemy.length() > spell.range:
+				return null
+			return me.pos + to_enemy.rotated(_aim_error())
+		"teleport":
+			return Vector2.ZERO if world.is_in_lava(me.pos) else null
+		"nova":
+			if enemy.is_empty() or to_enemy.length() > spell.radius * NOVA_RANGE_FRACTION:
+				return null
+			return me.pos
+		"shield":
+			return null if threat.is_empty() else me.pos
+	return null
+
+
+func _aim_error() -> float:
+	return _rng.randf_range(-difficulty.aim_error, difficulty.aim_error)
+
+
+## O projétil mais urgente que vai acertar o bot: { time: float, side: Vector2 (para onde
+## sair da frente) }, ou {} se não há perigo.
+func _incoming(world: RefCounted, me: Dictionary) -> Dictionary:
+	var threat := {}
 	for projectile: Dictionary in world.projectiles:
 		if projectile.owner == mage_id:
 			continue
-		var spell: Dictionary = Spells.TABLE[projectile.spell]
+		var spell: Dictionary = Spells.stats(projectile.spell, projectile.level)
 		var reach: float = spell.radius + SimWorld.MAGE_RADIUS + DODGE_MARGIN
 		var rel: Vector2 = me.pos - projectile.pos
 		var along: float = rel.dot(projectile.dir)
@@ -97,12 +137,9 @@ func _dodge_target(world: RefCounted, me: Dictionary, safe_radius: float) -> Var
 			continue
 		var lateral: Vector2 = rel - projectile.dir * along
 		var time: float = along / spell.speed
-		if lateral.length() > reach or time > DODGE_REACTION or time >= soonest:
+		if lateral.length() > reach or time > DODGE_REACTION or time >= threat.get("time", INF):
 			continue
-		soonest = time
 		# Sai pelo lado em que já está; bem na linha do tiro, escolhe um lado fixo.
 		var side: Vector2 = lateral.normalized() if lateral.length() > 0.01 else projectile.dir.orthogonal()
-		target = me.pos + side * DODGE_STEP
-		if target.length() > safe_radius:
-			target = me.pos - side * DODGE_STEP
-	return target
+		threat = {"time": time, "side": side}
+	return threat

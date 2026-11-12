@@ -34,14 +34,18 @@ var tick := 0
 var arena_radius := DEFAULT_ARENA_RADIUS
 ## Cada mago: { id: int, pos: Vector2, facing: float, move_target: Variant (Vector2 ou null),
 ## hp: float, alive: bool, vel: Vector2 (velocidade de empurrão),
-## cooldowns: { id da magia: tick em que volta a ficar pronta } }.
+## cooldowns: { id da magia: tick em que volta a ficar pronta },
+## spells: { id da magia: nível } na ordem da barra, shield_until: tick em que o escudo acaba }.
 ## `facing` é o ângulo em torno de Y; 0 aponta para +z.
 ## Mago morto fica na lista, mas não age nem se move.
 var mages: Array[Dictionary] = []
-## Cada projétil: { id: int, spell: String, owner: int, pos: Vector2, dir: Vector2, traveled: float }.
+## Cada projétil: { id, spell, level, owner, pos: Vector2, dir: Vector2, traveled: float }.
 var projectiles: Array[Dictionary] = []
-## O que aconteceu no último `step`, para o render: { type: "hit", pos, dir, spell, target }
-## ou { type: "fizzle", pos, spell } (projétil acabou sem acertar ninguém).
+## Áreas marcadas que vão explodir: { id, spell, level, owner, pos: Vector2, ticks_left: int }.
+var hazards: Array[Dictionary] = []
+## O que aconteceu no último `step`, para o render. Todo evento tem `type`, `spell` e `pos`:
+## "hit" (+ dir, target), "fizzle", "reflect", "blink" (+ from), "nova" (+ radius),
+## "explosion" (+ radius), "shield" (+ target).
 var events: Array[Dictionary] = []
 
 
@@ -58,7 +62,10 @@ var initial_arena_radius := DEFAULT_ARENA_RADIUS
 var rounds_to_win := 0
 
 var _next_projectile_id := 0
+var _next_hazard_id := 0
 var _mage_count := 1
+## Magias de cada mago (índice = id); sobrevivem à troca de rodada.
+var _loadouts: Array[Dictionary] = []
 var _phase_ticks := 0
 var _round_ticks := 0
 var _shrink_delay := DEFAULT_SHRINK_DELAY
@@ -67,7 +74,8 @@ var _min_arena_radius := DEFAULT_MIN_ARENA_RADIUS
 
 
 ## Config (tudo opcional): mage_count, arena_radius, rounds_to_win,
-## shrink_delay (s), shrink_rate (unidades/s), min_arena_radius.
+## shrink_delay (s), shrink_rate (unidades/s), min_arena_radius,
+## loadout (ids das magias com que todo mago começa; padrão: só Brasa).
 func _init(config: Dictionary = {}) -> void:
 	initial_arena_radius = config.get("arena_radius", DEFAULT_ARENA_RADIUS)
 	_mage_count = config.get("mage_count", 1)
@@ -77,6 +85,10 @@ func _init(config: Dictionary = {}) -> void:
 	_min_arena_radius = config.get("min_arena_radius", DEFAULT_MIN_ARENA_RADIUS)
 	for i in _mage_count:
 		scores.append(0)
+		var spells := {}
+		for spell_id: String in config.get("loadout", [Spells.EMBER]):
+			spells[spell_id] = 1
+		_loadouts.append(spells)
 	_reset_round()
 	if rounds_to_win > 0:
 		_enter(PHASE_COUNTDOWN, COUNTDOWN_SECONDS)
@@ -117,6 +129,7 @@ func step(commands: Array = []) -> void:
 			_move_mage(mage)
 			_apply_knockback(mage)
 	_step_projectiles()
+	_step_hazards()
 
 	if phase == PHASE_ROUND:
 		for mage in mages:
@@ -153,10 +166,15 @@ func is_in_lava(pos: Vector2) -> bool:
 ## Quanto falta da recarga: 1 logo após lançar, 0 quando a magia está pronta.
 func cooldown_fraction(mage_id: int, spell_id: String) -> float:
 	var mage := get_mage(mage_id)
-	if mage.is_empty() or not Spells.TABLE.has(spell_id):
+	if mage.is_empty() or not mage.spells.has(spell_id):
 		return 0.0
 	var remaining: int = mage.cooldowns.get(spell_id, 0) - tick
-	return clampf(float(remaining) / _cooldown_ticks(spell_id), 0.0, 1.0)
+	return clampf(float(remaining) / _ticks(_stats(mage, spell_id).cooldown), 0.0, 1.0)
+
+
+func is_shielded(mage_id: int) -> bool:
+	var mage := get_mage(mage_id)
+	return not mage.is_empty() and mage.alive and mage.shield_until > tick
 
 
 ## Cópia das posições, usada pelo render para interpolar entre dois ticks:
@@ -180,6 +198,7 @@ func _reset_round() -> void:
 	arena_radius = initial_arena_radius
 	_round_ticks = 0
 	projectiles.clear()
+	hazards.clear()
 	mages.clear()
 	for i in _mage_count:
 		# Magos nascem distribuídos num anel; um mago sozinho nasce no centro.
@@ -194,6 +213,8 @@ func _reset_round() -> void:
 			"alive": true,
 			"vel": Vector2.ZERO,
 			"cooldowns": {},
+			"spells": _loadouts[i],
+			"shield_until": 0,
 		})
 
 
@@ -223,38 +244,75 @@ func _finish_round_end() -> void:
 	_enter(PHASE_COUNTDOWN, COUNTDOWN_SECONDS)
 
 
-func _cooldown_ticks(spell_id: String) -> int:
-	return maxi(1, roundi(Spells.TABLE[spell_id].cooldown * TICK_RATE))
+func _ticks(seconds: float) -> int:
+	return maxi(1, roundi(seconds * TICK_RATE))
+
+
+func _stats(mage: Dictionary, spell_id: String) -> Dictionary:
+	return Spells.stats(spell_id, mage.spells[spell_id])
 
 
 func _cast(mage: Dictionary, spell_id: String, target: Vector2) -> void:
-	if not Spells.TABLE.has(spell_id) or mage.cooldowns.get(spell_id, 0) > tick:
+	if not mage.spells.has(spell_id) or mage.cooldowns.get(spell_id, 0) > tick:
 		return
-	mage.cooldowns[spell_id] = tick + _cooldown_ticks(spell_id)
+	var spell := _stats(mage, spell_id)
+	mage.cooldowns[spell_id] = tick + _ticks(spell.cooldown)
 	var to_target: Vector2 = target - mage.pos
-	if to_target.length() > 0.001:
+	if to_target.length() > 0.001 and spell.behavior != "nova" and spell.behavior != "shield":
 		mage.facing = atan2(to_target.x, to_target.y)
-	projectiles.append({
-		"id": _next_projectile_id,
-		"spell": spell_id,
-		"owner": mage.id,
-		"pos": mage.pos,
-		"dir": Vector2(sin(mage.facing), cos(mage.facing)),
-		"traveled": 0.0,
-	})
-	_next_projectile_id += 1
+	var event := {"spell": spell_id, "pos": mage.pos, "target": mage.id}
+	match spell.behavior:
+		"projectile":
+			projectiles.append({
+				"id": _next_projectile_id,
+				"spell": spell_id,
+				"level": mage.spells[spell_id],
+				"owner": mage.id,
+				"pos": mage.pos,
+				"dir": Vector2(sin(mage.facing), cos(mage.facing)),
+				"traveled": 0.0,
+			})
+			_next_projectile_id += 1
+		"teleport":
+			event.merge({"type": "blink", "from": mage.pos})
+			mage.pos += to_target.limit_length(spell.range)
+			mage.move_target = null
+			event.pos = mage.pos
+			events.append(event)
+		"nova":
+			_blast(mage.pos, spell, mage.id)
+			events.append(event.merged({"type": "nova", "radius": spell.radius}))
+		"shield":
+			mage.shield_until = tick + _ticks(spell.duration)
+			events.append(event.merged({"type": "shield"}))
+		"delayed_area":
+			hazards.append({
+				"id": _next_hazard_id,
+				"spell": spell_id,
+				"level": mage.spells[spell_id],
+				"owner": mage.id,
+				"pos": mage.pos + to_target.limit_length(spell.range),
+				"ticks_left": _ticks(spell.delay),
+			})
+			_next_hazard_id += 1
 
 
 func _step_projectiles() -> void:
 	var survivors: Array[Dictionary] = []
 	for projectile in projectiles:
-		var spell: Dictionary = Spells.TABLE[projectile.spell]
+		var spell: Dictionary = Spells.stats(projectile.spell, projectile.level)
+		if spell.has("turn_rate"):
+			_steer(projectile, spell.turn_rate * DT)
 		var from: Vector2 = projectile.pos
 		var advance: float = minf(spell.speed * DT, spell.range - projectile.traveled)
 		var to: Vector2 = from + projectile.dir * advance
 		var victim := _first_mage_hit(projectile, from, to, spell.radius + MAGE_RADIUS)
 		if not victim.is_empty():
-			_hit(victim, projectile, spell)
+			if victim.shield_until > tick:
+				_reflect(projectile, victim)
+				survivors.append(projectile)
+			else:
+				_hit(victim, projectile, spell)
 			continue
 		projectile.pos = to
 		projectile.traveled += advance
@@ -263,6 +321,23 @@ func _step_projectiles() -> void:
 		else:
 			survivors.append(projectile)
 	projectiles = survivors
+
+
+## Vira o projétil, no máximo `max_turn` radianos, na direção do inimigo vivo mais próximo.
+func _steer(projectile: Dictionary, max_turn: float) -> void:
+	var nearest := {}
+	var best := INF
+	for mage in mages:
+		if not mage.alive or mage.id == projectile.owner:
+			continue
+		var dist: float = projectile.pos.distance_squared_to(mage.pos)
+		if dist < best:
+			nearest = mage
+			best = dist
+	if nearest.is_empty() or best < 0.0001:
+		return
+	var wanted: float = projectile.dir.angle_to(nearest.pos - projectile.pos)
+	projectile.dir = projectile.dir.rotated(clampf(wanted, -max_turn, max_turn))
 
 
 ## O mago vivo (que não o dono) mais perto do início do trecho percorrido neste tick.
@@ -284,14 +359,63 @@ func _first_mage_hit(projectile: Dictionary, from: Vector2, to: Vector2, reach: 
 
 func _hit(victim: Dictionary, projectile: Dictionary, spell: Dictionary) -> void:
 	_damage(victim, spell.damage)
-	# O empurrão cresce com o dano acumulado: quanto menos vida, mais longe voa.
-	var missing: float = 1.0 - victim.hp / MAX_HP
-	victim.vel += projectile.dir * spell.knockback * (1.0 + missing * KNOCKBACK_DAMAGE_SCALING)
-	victim.move_target = null
+	var owner := get_mage(projectile.owner)
+	if spell.has("pull") and not owner.is_empty():
+		# Puxão: velocidade fixa na direção de quem lançou, substituindo o empurrão atual.
+		victim.vel = victim.pos.direction_to(owner.pos) * spell.pull
+		victim.move_target = null
+	else:
+		_push(victim, projectile.dir, spell.knockback)
 	events.append({
 		"type": "hit", "pos": victim.pos, "dir": projectile.dir,
 		"spell": projectile.spell, "target": victim.id,
 	})
+
+
+## O escudo devolve o projétil: ele passa a ser de quem refletiu e volta para quem lançou.
+func _reflect(projectile: Dictionary, shielded: Dictionary) -> void:
+	var owner := get_mage(projectile.owner)
+	projectile.dir = -projectile.dir if owner.is_empty() or owner.pos == shielded.pos \
+		else shielded.pos.direction_to(owner.pos)
+	projectile.owner = shielded.id
+	projectile.pos = shielded.pos
+	projectile.traveled = 0.0
+	events.append({"type": "reflect", "pos": shielded.pos, "spell": projectile.spell})
+
+
+## Empurrão que cresce com o dano acumulado: quanto menos vida, mais longe voa.
+func _push(victim: Dictionary, dir: Vector2, knockback: float) -> void:
+	if not victim.alive:
+		return
+	var missing: float = 1.0 - victim.hp / MAX_HP
+	victim.vel += dir * knockback * (1.0 + missing * KNOCKBACK_DAMAGE_SCALING)
+	victim.move_target = null
+
+
+## Explosão em área: fere e empurra para longe do centro todo mago vivo no raio,
+## menos `immune_id` (quem lançou um Vendaval; -1 = ninguém escapa).
+func _blast(center: Vector2, spell: Dictionary, immune_id: int) -> void:
+	for mage in mages:
+		if not mage.alive or mage.id == immune_id:
+			continue
+		if mage.pos.distance_to(center) > spell.radius + MAGE_RADIUS:
+			continue
+		_damage(mage, spell.damage)
+		var away: Vector2 = center.direction_to(mage.pos)
+		_push(mage, away if away != Vector2.ZERO else Vector2.RIGHT, spell.knockback)
+
+
+func _step_hazards() -> void:
+	var pending: Array[Dictionary] = []
+	for hazard in hazards:
+		hazard.ticks_left -= 1
+		if hazard.ticks_left > 0:
+			pending.append(hazard)
+			continue
+		var spell: Dictionary = Spells.stats(hazard.spell, hazard.level)
+		_blast(hazard.pos, spell, -1)
+		events.append({"type": "explosion", "pos": hazard.pos, "spell": hazard.spell, "radius": spell.radius})
+	hazards = pending
 
 
 func _apply_knockback(mage: Dictionary) -> void:
