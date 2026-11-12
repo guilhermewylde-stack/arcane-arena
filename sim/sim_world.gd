@@ -43,6 +43,7 @@ const DEFAULT_MIN_ARENA_RADIUS := 4.0
 var tick := 0
 var arena_radius := DEFAULT_ARENA_RADIUS
 ## Cada mago: { id: int, pos: Vector2, facing: float, move_target: Variant (Vector2 ou null),
+## move_dir: Vector2 (direção conduzida por WASD, unitária ou zero),
 ## hp: float, alive: bool, vel: Vector2 (velocidade de empurrão),
 ## cooldowns: { id da magia: tick em que volta a ficar pronta },
 ## spells: { id da magia: nível } na ordem da barra, shield_until: tick em que o escudo acaba,
@@ -118,6 +119,12 @@ static func move_command(mage_id: int, target: Vector2) -> Dictionary:
 	return {"type": "move", "mage_id": mage_id, "target": target}
 
 
+## Conduz o mago numa direção (WASD) até chegar outro comando; direção zero o faz parar.
+## Conduzir e andar até um ponto (`move_command`) se cancelam: vale o último.
+static func steer_command(mage_id: int, direction: Vector2) -> Dictionary:
+	return {"type": "steer", "mage_id": mage_id, "dir": direction}
+
+
 ## Compra a magia ou, se o mago já a tem, sobe um nível. Só vale na loja.
 static func buy_command(mage_id: int, spell_id: String) -> Dictionary:
 	return {"type": "buy", "mage_id": mage_id, "spell": spell_id}
@@ -155,6 +162,11 @@ func step(commands: Array = []) -> void:
 		match cmd.type:
 			"move":
 				mage.move_target = cmd.target
+				mage.move_dir = Vector2.ZERO
+			"steer":
+				mage.move_dir = cmd.dir.normalized()
+				if mage.move_dir != Vector2.ZERO:
+					mage.move_target = null
 			"cast":
 				_cast(mage, cmd.spell, cmd.target)
 	for mage in mages:
@@ -258,6 +270,7 @@ func _reset_round() -> void:
 			"pos": Vector2(sin(angle), cos(angle)) * r,
 			"facing": angle + PI,
 			"move_target": null,
+			"move_dir": Vector2.ZERO,
 			"hp": MAX_HP,
 			"alive": true,
 			"vel": Vector2.ZERO,
@@ -500,6 +513,10 @@ func _apply_knockback(mage: Dictionary) -> void:
 
 
 func _move_mage(mage: Dictionary) -> void:
+	if mage.move_dir != Vector2.ZERO:
+		mage.facing = atan2(mage.move_dir.x, mage.move_dir.y)
+		mage.pos += mage.move_dir * MAGE_SPEED * DT
+		return
 	if mage.move_target == null:
 		return
 	var target: Vector2 = mage.move_target

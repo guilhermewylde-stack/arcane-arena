@@ -1,5 +1,5 @@
 extends SceneTree
-## Teste de fumaça visual: abre o jogo, anda, empurra o boneco com Brasa, dá zoom, morre na lava, reinicia, assiste a uma partida de bots e salva capturas.
+## Teste de fumaça visual: abre o jogo, anda, empurra o boneco com Brasa, dá zoom, anda em 3ª pessoa até morrer na lava, reinicia, assiste a uma partida de bots e salva capturas.
 ## xvfb-run -a godot --path . --rendering-method gl_compatibility -s tests/smoke.gd -- <pasta de saída>
 
 const SimWorld := preload("res://sim/sim_world.gd")
@@ -78,9 +78,34 @@ func _process(_delta: float) -> bool:
 		print("posição: após Passo Etéreo ", world.mages[0].pos, " · boneco 3 vida ", world.mages[3].hp)
 		if world.mages[0].pos.y > -5.0 or world.mages[3].hp > SimWorld.MAX_HP - 10.0:
 			_fail("Passo Etéreo não teleportou ou a Fagulha não achou o boneco")
-		# Anda para a lava e fica lá até morrer.
-		_main.view.zoom = 0.45
-		_main.queue_command(SimWorld.move_command(0, Vector2(-world.arena_radius - 3.0, 0)))
+		# Anda para a lava em 3ª pessoa (W segurado, mira virada para -x pelo mouse) e fica lá até morrer.
+		_main.view.zoom = 0.0
+	elif _frame == 503:
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			_fail("o mouse não foi capturado em 3ª pessoa")
+		_turn_aim_to(-PI / 2)
+		_key(KEY_W, true)
+		_key(KEY_2, true)
+	elif _frame == 506:
+		if _main.view.selected_slot != 1:
+			_fail("a tecla 2 não escolheu o 2º espaço da barra")
+		_key(KEY_1, true)
+		# De novo: ao capturar o mouse, o servidor gráfico da nuvem solta um movimento por conta própria.
+		_turn_aim_to(-PI / 2)
+	elif _frame == 512:
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = true
+		Input.parse_input_event(click)
+	elif _frame == 518:
+		print("posição: 3ª pessoa · mira ", _main.view.aim_yaw, " · projéteis ", world.projectiles.size())
+		if world.projectiles.is_empty() or world.projectiles[0].dir.x > -0.99:
+			_fail("o clique não lançou a Brasa na direção da mira")
+	elif _frame == 560:
+		_save("third_walk.png")
+		print("posição: 3ª pessoa andando ", world.mages[0].pos)
+		if world.mages[0].pos.x > -9.0 or absf(world.mages[0].pos.y + 6.0) > 1.0:
+			_fail("W não andou na direção da câmera")
 	elif _frame == 770:
 		_save("lava.png")
 		print("posição na lava: vida ", world.mages[0].hp)
@@ -90,6 +115,7 @@ func _process(_delta: float) -> bool:
 		print("posição: morto na lava = ", dead)
 		if not dead:
 			_fail("o mago não morreu na lava")
+		_key(KEY_W, false)
 		# Segunda parte: partida de verdade contra os bots, com o jogador parado.
 		# A arena encolhe depressa para a rodada caber no teste.
 		_main.restart(MATCH_CONFIG)
@@ -97,6 +123,8 @@ func _process(_delta: float) -> bool:
 		_main.view.zoom = 1.0
 	elif _frame == 980:
 		_save("countdown.png")
+		if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
+			_fail("o mouse continuou capturado na visão de cima")
 		var mage: Dictionary = world.mages[0]
 		print("posição após reiniciar: ", mage.pos, " vivo = ", mage.alive, " fase = ", world.phase)
 		if not (mage.alive and mage.hp == SimWorld.MAX_HP and world.phase == SimWorld.PHASE_COUNTDOWN):
@@ -144,6 +172,21 @@ func _process(_delta: float) -> bool:
 		_fail("a segunda rodada não acabou a tempo")
 		quit(1)
 	return false
+
+
+## Gira a mira de 3ª pessoa pelo caminho real: um evento de movimento do mouse.
+func _turn_aim_to(yaw: float) -> void:
+	var motion := InputEventMouseMotion.new()
+	motion.relative = Vector2(angle_difference(yaw, _main.view.aim_yaw) / _main.MOUSE_TURN, -40.0)
+	Input.parse_input_event(motion)
+
+
+func _key(code: Key, pressed: bool) -> void:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.physical_keycode = code
+	event.pressed = pressed
+	Input.parse_input_event(event)
 
 
 func _fail(message: String) -> void:

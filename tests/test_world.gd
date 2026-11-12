@@ -118,3 +118,58 @@ func _world_with_dead_mage() -> RefCounted:
 	for i in ticks:
 		world.step()
 	return world
+
+
+func test_conduzir_anda_na_direcao_ate_mandar_parar() -> void:
+	var world := SimWorld.new()
+	world.step([SimWorld.steer_command(0, Vector2(1, 0))])
+	for i in SimWorld.TICK_RATE - 1:
+		world.step()
+	check_near(world.mages[0].pos.x, SimWorld.MAGE_SPEED, "x após 1 s", 0.001)
+	world.step([SimWorld.steer_command(0, Vector2.ZERO)])
+	var stopped: Vector2 = world.mages[0].pos
+	world.step()
+	check_eq(world.mages[0].pos, stopped, "parou com direção zero")
+
+
+func test_conduzir_na_diagonal_nao_e_mais_rapido() -> void:
+	var world := SimWorld.new()
+	world.step([SimWorld.steer_command(0, Vector2(5, 5))])
+	check_near(world.mages[0].pos.length(), SimWorld.MAGE_SPEED * SimWorld.DT, "passo de um tick")
+
+
+func test_conduzir_vira_o_mago_para_a_direcao() -> void:
+	var world := SimWorld.new()
+	world.step([SimWorld.steer_command(0, Vector2(-1, 0))])
+	check_near(world.mages[0].facing, -PI / 2, "facing para -x")
+
+
+func test_conduzir_cancela_o_alvo_do_clique_e_vice_versa() -> void:
+	var world := SimWorld.new()
+	world.step([SimWorld.move_command(0, Vector2(10, 0))])
+	world.step([SimWorld.steer_command(0, Vector2(0, 1))])
+	check(world.mages[0].move_target == null, "conduzir limpa o alvo")
+	var x: float = world.mages[0].pos.x
+	world.step([SimWorld.move_command(0, Vector2(x, -10))])
+	world.step()
+	check_near(world.mages[0].pos.x, x, "segue só o clique")
+	check(world.mages[0].pos.y < 0.2, "clique cancela a direção conduzida")
+
+
+func test_conduzir_com_direcao_zero_nao_cancela_o_clique() -> void:
+	var world := SimWorld.new()
+	world.step([SimWorld.move_command(0, Vector2(10, 0))])
+	world.step([SimWorld.steer_command(0, Vector2.ZERO)])
+	check(world.mages[0].move_target != null, "alvo do clique continua")
+
+
+func test_mago_morto_nao_e_conduzido() -> void:
+	var world := SimWorld.new({"arena_radius": 5.0, "mage_count": 2})
+	world.mages[0].hp = 0.01
+	world.mages[0].pos = Vector2(50, 0)
+	world.step([SimWorld.steer_command(0, Vector2(1, 0))])
+	world.step()
+	var pos: Vector2 = world.mages[0].pos
+	world.step()
+	check(not world.mages[0].alive, "morreu na lava")
+	check_eq(world.mages[0].pos, pos, "morto não anda")

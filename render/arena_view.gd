@@ -26,10 +26,19 @@ const PROJECTILE_HEIGHT := 1.1
 const ICON_SIZE := 52.0
 ## Rótulos das teclas da barra de magias, na ordem dos espaços.
 const SLOT_LABELS: Array[String] = ["Q", "W", "E", "R", "D", "F"]
+## Em 3ª pessoa as letras são do movimento: a magia é escolhida pelo número e sai no clique.
+const SLOT_LABELS_THIRD: Array[String] = ["1", "2", "3", "4", "5", "6"]
+const SELECTED_COLOR := Color("ffe9a8")
 ## Altura de onde o Cometa começa a cair.
 const COMET_HEIGHT := 22.0
 
 var zoom := 1.0
+## Mira de 3ª pessoa: direção (mesma convenção do `facing`) e distância do retículo ao mago.
+## Fora da 3ª pessoa a direção acompanha o mago, para a câmera entrar por trás dele.
+var aim_yaw := 0.0
+var aim_distance := 9.0
+## Espaço da barra que o clique esquerdo lança em 3ª pessoa.
+var selected_slot := 0
 
 var _camera := Camera3D.new()
 var _camera_yaw := 0.0
@@ -48,6 +57,8 @@ var _projectiles := {}
 ## Clarões de impacto em andamento: { node: MeshInstance3D, life: float (1 → 0), size: float }.
 var _bursts: Array[Dictionary] = []
 var _spell_icons := {}
+var _spell_keys: Array[Label] = []
+var _reticle: MeshInstance3D
 var _spell_bar: HBoxContainer
 var _shop: PanelContainer
 var _shop_title: Label
@@ -86,6 +97,15 @@ func screen_to_ground(screen_pos: Vector2) -> Variant:
 	if hit == null:
 		return null
 	return Vector2(hit.x, hit.z)
+
+
+func is_third_person() -> bool:
+	return CameraRig.is_third_person(zoom)
+
+
+## Ponto do chão sob o retículo da 3ª pessoa.
+func aim_point() -> Vector2:
+	return CameraRig.aim_point(_focus, aim_yaw, aim_distance)
 
 
 func show_move_marker(at: Vector2) -> void:
@@ -155,15 +175,23 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 	var local: Node3D = _mages.get(local_mage_id)
 	if local != null:
 		zoom = CameraRig.clamp_zoom(zoom)
-		var target_yaw := lerp_angle(0.0, local.rotation.y, CameraRig.follow_weight(zoom))
-		_camera_yaw = lerp_angle(_camera_yaw, target_yaw, minf(1.0, delta * 5.0))
-		# Morto, o jogador vira espectador: a câmera desliza para o centro da arena.
+		var third := is_third_person()
 		var local_mage: Dictionary = world.get_mage(local_mage_id)
+		aim_distance = CameraRig.clamp_aim_distance(aim_distance)
+		if not third:
+			aim_yaw = local_mage.facing
+		var target_yaw := lerp_angle(0.0, aim_yaw, CameraRig.follow_weight(zoom))
+		# Em 3ª pessoa a câmera obedece ao mouse quase na hora; de cima, gira com calma.
+		_camera_yaw = lerp_angle(_camera_yaw, target_yaw, minf(1.0, delta * (30.0 if third else 5.0)))
+		# Morto, o jogador vira espectador: a câmera desliza para o centro da arena.
 		var focus_target := Vector2(local.position.x, local.position.z) if local_mage.alive else Vector2.ZERO
 		_focus = focus_target if local_mage.alive else _focus.lerp(focus_target, minf(1.0, delta * 2.0))
 		var pose := CameraRig.compute_pose(_focus, _camera_yaw, zoom)
 		_camera.position = pose.position
 		_camera.look_at(pose.look_at)
+		_reticle.visible = third and local_mage.alive
+		var aim := aim_point()
+		_reticle.position = Vector3(aim.x, 0.04, aim.y)
 
 	_draw_health(world, local_mage_id)
 	_draw_match(world, local_mage_id)
@@ -193,6 +221,11 @@ func _draw_health(world: RefCounted, local_mage_id: int) -> void:
 		for spell_id: String in _spell_icons:
 			var shade: ColorRect = _spell_icons[spell_id]
 			shade.size.y = ICON_SIZE * world.cooldown_fraction(local_mage_id, spell_id)
+		var third := is_third_person()
+		for slot: int in _spell_keys.size():
+			_spell_keys[slot].text = (SLOT_LABELS_THIRD if third else SLOT_LABELS)[slot]
+			var icon: ColorRect = _spell_keys[slot].get_parent()
+			icon.color = SELECTED_COLOR if third and slot == selected_slot else BAR_BACK
 
 
 ## Área marcada no chão (anel que pulsa) e a pedra caindo até o momento do impacto.
@@ -464,6 +497,7 @@ func _build_spell_bar() -> void:
 func _fill_spell_bar(spell_ids: Array) -> void:
 	_shown_spells = spell_ids.duplicate()
 	_spell_icons.clear()
+	_spell_keys.clear()
 	for child in _spell_bar.get_children():
 		_spell_bar.remove_child(child)
 		child.queue_free()
@@ -498,6 +532,7 @@ func _create_spell_icon(spell_id: String, key_label: String) -> ColorRect:
 	key.add_theme_color_override("font_outline_color", Color.BLACK)
 	key.add_theme_constant_override("outline_size", 6)
 	icon.add_child(key)
+	_spell_keys.append(key)
 	icon.tooltip_text = spell.name
 	_spell_bar.add_child(icon)
 	return shade
@@ -564,6 +599,16 @@ func _build_arena(arena_radius: float) -> void:
 	_marker_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_marker = _add_mesh(_ring_mesh(0.35, 0.5), _marker_material, self)
 	_marker.visible = false
+
+	# Retículo da 3ª pessoa: desenhado por cima de tudo, para o mago não o esconder.
+	var reticle_material := StandardMaterial3D.new()
+	reticle_material.albedo_color = Color("fff3c4")
+	reticle_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	reticle_material.no_depth_test = true
+	reticle_material.render_priority = 10
+	_reticle = _add_mesh(_ring_mesh(0.42, 0.56), reticle_material, self)
+	_add_mesh(_ring_mesh(0.0, 0.1, 16), reticle_material, _reticle)
+	_reticle.visible = false
 
 
 func _create_mage(id: int) -> Node3D:
