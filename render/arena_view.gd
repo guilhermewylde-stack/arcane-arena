@@ -2,6 +2,7 @@ extends Node3D
 ## Tudo que é visual fica aqui. Recebe o estado da simulação e só desenha.
 
 const CameraRig := preload("res://render/camera_rig.gd")
+const Spells := preload("res://sim/spells.gd")
 
 const MAGE_COLORS: Array[Color] = [
 	Color("4aa3ff"), Color("ff5a4a"), Color("6bd66b"), Color("e0c040"),
@@ -16,6 +17,9 @@ const BAR_ANCHOR_HEIGHT := 2.75
 ## Quanto o mago afunda quando está na lava, e até onde desce ao morrer.
 const LAVA_SINK := -0.9
 const DEATH_SINK := -3.2
+## Altura em que os projéteis voam (na mão/cajado do mago).
+const PROJECTILE_HEIGHT := 1.1
+const ICON_SIZE := 52.0
 
 var zoom := 1.0
 
@@ -31,6 +35,10 @@ var _hud := CanvasLayer.new()
 var _bars := {}
 var _hud_bar: ColorRect
 var _hud_label: Label
+var _projectiles := {}
+## Clarões de impacto em andamento: { node: MeshInstance3D, life: float (1 → 0), size: float }.
+var _bursts: Array[Dictionary] = []
+var _spell_icons := {}
 
 
 func _init(arena_radius: float) -> void:
@@ -41,6 +49,7 @@ func _init(arena_radius: float) -> void:
 	add_child(_camera)
 	add_child(_hud)
 	_build_hud_bar()
+	_build_spell_icon(Spells.EMBER)
 
 
 ## Converte um ponto da tela no ponto correspondente do chão da arena (ou null).
@@ -58,7 +67,18 @@ func show_move_marker(at: Vector2) -> void:
 	_marker_life = 1.0
 
 
-## Desenha um quadro. `previous` são as posições do tick anterior e `alpha` (0..1)
+## Mostra o que a simulação relatou num `step` (acertos, projéteis que se apagaram).
+func show_events(events: Array) -> void:
+	for event: Dictionary in events:
+		var color: Color = Spells.TABLE[event.spell].color
+		match event.type:
+			"hit":
+				_spawn_burst(Vector3(event.pos.x, PROJECTILE_HEIGHT, event.pos.y), color, 1.6)
+			"fizzle":
+				_spawn_burst(Vector3(event.pos.x, PROJECTILE_HEIGHT, event.pos.y), color, 0.6)
+
+
+## Desenha um quadro. `previous` é o `snapshot_positions()` do tick anterior e `alpha` (0..1)
 ## é o quanto já andamos entre ele e o tick atual.
 func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mage_id: int, delta: float) -> void:
 	_time += delta
@@ -67,7 +87,7 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 		if node == null:
 			node = _create_mage(mage.id)
 			node.rotation.y = mage.facing
-		var before: Vector2 = previous.get(mage.id, mage.pos)
+		var before: Vector2 = previous.mages.get(mage.id, mage.pos)
 		var pos := before.lerp(mage.pos, alpha)
 		# Na lava o mago afunda um pouco; morto, some dentro dela.
 		var sink := 0.0
@@ -78,6 +98,9 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 		node.visible = mage.alive or node.position.y > DEATH_SINK + 0.05
 		node.position = Vector3(pos.x, move_toward(node.position.y, sink, delta * 4.0), pos.y)
 		node.rotation.y = lerp_angle(node.rotation.y, mage.facing, minf(1.0, delta * 14.0))
+
+	_draw_projectiles(world, previous.projectiles, alpha)
+	_draw_bursts(delta)
 
 	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
 	_lava_material.emission_energy_multiplier = 0.85 + pulse * 0.2
@@ -115,6 +138,73 @@ func _draw_health(world: RefCounted, local_mage_id: int) -> void:
 	if not local.is_empty():
 		_set_fill(_hud_bar, local.hp / world.MAX_HP)
 		_hud_label.text = "%d / %d" % [ceili(local.hp), int(world.MAX_HP)] if local.alive else "Morto"
+	for spell_id: String in _spell_icons:
+		var shade: ColorRect = _spell_icons[spell_id]
+		shade.size.y = ICON_SIZE * world.cooldown_fraction(local_mage_id, spell_id)
+
+
+func _draw_projectiles(world: RefCounted, previous: Dictionary, alpha: float) -> void:
+	var seen := {}
+	for projectile: Dictionary in world.projectiles:
+		seen[projectile.id] = true
+		var node: Node3D = _projectiles.get(projectile.id)
+		if node == null:
+			node = _create_projectile(projectile.id, Spells.TABLE[projectile.spell])
+		var before: Vector2 = previous.get(projectile.id, projectile.pos)
+		var pos := before.lerp(projectile.pos, alpha)
+		node.position = Vector3(pos.x, PROJECTILE_HEIGHT, pos.y)
+	for id: int in _projectiles.keys():
+		if not seen.has(id):
+			_projectiles[id].queue_free()
+			_projectiles.erase(id)
+
+
+func _create_projectile(id: int, spell: Dictionary) -> Node3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = spell.color
+	material.emission_enabled = true
+	material.emission = spell.color
+	material.emission_energy_multiplier = 4.0
+	var mesh := SphereMesh.new()
+	mesh.radius = spell.radius
+	mesh.height = spell.radius * 2.0
+	var node := _add_mesh(mesh, material, self)
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var light := OmniLight3D.new()
+	light.light_color = spell.color
+	light.light_energy = 2.5
+	light.omni_range = 5.0
+	node.add_child(light)
+	_projectiles[id] = node
+	return node
+
+
+## Clarão que cresce e some: marca onde um projétil acertou ou se apagou.
+func _spawn_burst(at: Vector3, color: Color, size: float) -> void:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color.lightened(0.4)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var mesh := SphereMesh.new()
+	mesh.radius = 1.0
+	mesh.height = 2.0
+	var node := _add_mesh(mesh, material, self)
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.position = at
+	node.scale = Vector3.ONE * 0.2
+	_bursts.append({"node": node, "life": 1.0, "size": size})
+
+
+func _draw_bursts(delta: float) -> void:
+	for burst in _bursts:
+		burst.life -= delta * 3.0
+		var node: MeshInstance3D = burst.node
+		if burst.life <= 0.0:
+			node.queue_free()
+			continue
+		node.scale = Vector3.ONE * lerpf(burst.size, 0.2, burst.life * burst.life)
+		node.material_override.albedo_color.a = burst.life
+	_bursts = _bursts.filter(func(burst: Dictionary) -> bool: return burst.life > 0.0)
 
 
 func _set_fill(bar: ColorRect, fraction: float) -> void:
@@ -149,6 +239,37 @@ func _build_hud_bar() -> void:
 	_hud_label.add_theme_constant_override("outline_size", 4)
 	_hud_bar.add_child(_hud_label)
 	_hud.add_child(_hud_bar)
+
+
+## Ícone da magia com a tecla; uma sombra desce de cima enquanto a recarga corre.
+func _build_spell_icon(spell_id: String) -> void:
+	var spell: Dictionary = Spells.TABLE[spell_id]
+	var icon := ColorRect.new()
+	icon.color = BAR_BACK
+	icon.size = Vector2.ONE * ICON_SIZE
+	icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE)
+	icon.position = Vector2(icon.position.x + HUD_BAR_SIZE.x * 0.5 + 44.0, icon.position.y - 40.0)
+	var gem := ColorRect.new()
+	gem.color = spell.color
+	gem.position = Vector2(3, 3)
+	gem.size = Vector2.ONE * (ICON_SIZE - 6.0)
+	icon.add_child(gem)
+	var shade := ColorRect.new()
+	shade.color = Color(0, 0, 0, 0.72)
+	shade.size = Vector2(ICON_SIZE, 0)
+	icon.add_child(shade)
+	var key := Label.new()
+	key.text = spell.key
+	key.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	key.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	key.add_theme_font_size_override("font_size", 22)
+	key.add_theme_color_override("font_outline_color", Color.BLACK)
+	key.add_theme_constant_override("outline_size", 6)
+	icon.add_child(key)
+	icon.tooltip_text = spell.name
+	_hud.add_child(icon)
+	_spell_icons[spell_id] = shade
 
 
 func _build_environment(arena_radius: float) -> void:
