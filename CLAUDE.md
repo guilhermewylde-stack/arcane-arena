@@ -3,22 +3,27 @@
 Arena brawler 3D de magos para PC: magias de empurrão, plataforma que encolhe sobre lava, último de pé vence.
 Jogo **original** inspirado no gênero dos mods de arena de magos — nunca copiar nomes, personagens, arte, sons ou mapas de jogos existentes.
 
-Stack: TypeScript, Three.js, Vite, Vitest. O produto é um **cliente de PC** (Electron, issue 011); o navegador é só para desenvolvimento e testes.
-Jogo comercial autopublicado (site próprio, talvez Steam): só usar assets e dependências com licença para uso comercial, registrados em `docs/CREDITS.md`.
+Stack: **Godot 4.6** (GDScript, renderizador Forward+). O produto é um cliente de PC nativo (Windows primeiro).
+Jogo comercial autopublicado (site próprio, talvez Steam): só usar assets e addons com licença para uso comercial, registrados em `docs/CREDITS.md`.
 
 ## Comandos
 
-- `npm run dev` — jogo no navegador com hot reload
-- `npm run check` — typecheck + testes (tem que passar antes de todo commit)
-- `npm run build` — build de produção
+- `bash tools/setup_godot.sh` — instala o Godot em `~/.local/bin/godot` (rodar no início de cada sessão na nuvem)
+- `bash tools/check.sh` — importa o projeto e roda os testes (tem que passar antes de todo commit)
+- `bash tools/smoke.sh <pasta>` — roda o jogo de verdade e salva capturas `top.png` e `third.png`
+- No PC do usuário: abrir `project.godot` no editor Godot 4.6 e apertar F5
 
 ## Arquitetura (módulos profundos, interfaces pequenas)
 
-- `src/sim/` — simulação pura e determinística. Sem Three.js, sem DOM, sem `Math.random`, sem relógio real.
-  Interface: `createWorld(config)` e `step(world, commands)`. Toda regra de jogo mora aqui e é coberta por testes.
-- `src/render/` — só desenha o estado da simulação. `cameraRig.ts` é matemática pura (testável); `scene.ts` é Three.js.
-- `src/main.ts` — cola: entrada → comandos → `step` em passo fixo (30 Hz) → render interpolado.
-- Entrada nunca altera o mundo direto: sempre vira um `Command`. Isso mantém o caminho aberto para bots, replays e multiplayer.
+- `sim/` — simulação pura e determinística (`RefCounted`). Sem nós, sem cena, sem `Input`, sem `randf()` global, sem relógio real.
+  Interface: `SimWorld.new(config)` e `step(commands)`. Toda regra de jogo mora aqui e é coberta por testes.
+  O chão é 2D: `Vector2(x, y)` da simulação é `(x, z)` no mundo 3D.
+- `render/` — só desenha o estado da simulação. `camera_rig.gd` é matemática pura (testável); `arena_view.gd` monta a cena.
+- `game/main.gd` — cola: entrada → comandos → `step` em passo fixo (30 Hz) → render interpolado.
+- Entrada nunca altera o mundo direto: sempre vira um comando (`queue_command`). Isso mantém o caminho aberto para bots, replays e multiplayer.
+- `tests/` — `test_*.gd` estendem `tests/test_case.gd`; métodos `test_*` são descobertos por `tests/run_tests.gd`.
+- Scripts se referenciam por `preload("res://...")`, não por `class_name` (funciona em modo headless sem cache do editor).
+- A cena é montada por código enquanto os visuais são formas simples; cenas `.tscn` e modelos entram na issue 009.
 
 ## Método de trabalho (Matt Pocock)
 
@@ -26,8 +31,8 @@ Fluxo: PRD (`docs/PRD.md`) → issues em fatias verticais (`docs/issues/`) → u
 
 1. **Início da sessão**: ler só `docs/HANDOFF.md` e a issue indicada nele. Não ler o PRD inteiro nem outras issues sem necessidade.
 2. **Uma issue por vez**, na ordem de `docs/issues/README.md`, respeitando dependências. Issues `HITL` exigem decisão do usuário antes de codar; `AFK` podem ser feitas direto.
-3. **TDD** para tudo em `src/sim/` e matemática pura: teste vermelho → código mínimo → verde → refatorar. Testar comportamento pela interface pública, não detalhes internos.
-4. **Verificar de verdade**: além de `npm run check`, abrir o jogo no navegador (Playwright) e conferir a fatia funcionando quando ela tem parte visual.
+3. **TDD** para tudo em `sim/` e matemática pura: teste vermelho → código mínimo → verde → refatorar. Testar comportamento pela interface pública, não detalhes internos.
+4. **Verificar de verdade**: além de `tools/check.sh`, rodar `tools/smoke.sh` e olhar as capturas quando a fatia tem parte visual (estender `tests/smoke.gd` para exercitar a novidade).
 5. **Fechar a issue**: marcar `Status: concluída` no arquivo e no README das issues, commit e push.
 6. **Orçamento de contexto**: a sessão não deve passar muito de ~300k tokens. Depois de ~220k, **não começar** uma nova issue. Uma issue já iniciada **nunca** é interrompida: termina-se, mesmo que passe do limite.
 7. **Fim da sessão**: reescrever `docs/HANDOFF.md` (estado atual, próxima issue, pegadinhas descobertas), commit, push, e **mandar ao usuário, no chat, o prompt da próxima sessão** (o bloco de `docs/HANDOFF.md`).

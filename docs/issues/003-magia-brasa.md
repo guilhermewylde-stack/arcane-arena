@@ -9,4 +9,4 @@ Comando `cast` com alvo no chão. Brasa é um projétil reto com recarga e alcan
 - [ ] Magia definida como dados (tabela de magias)
 - [ ] Testes: recarga, alcance, acerto, dano, empurrão escala com dano, quem lançou não é atingido
 - [ ] Projétil visível com brilho; impacto visível
-- [ ] Conferido no navegador: dá para empurrar o boneco para a lava
+- [ ] Conferido no teste de fumaça: dá para empurrar o boneco para a lava

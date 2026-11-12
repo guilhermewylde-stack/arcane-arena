@@ -24,26 +24,25 @@ Jogo 3D original. 2 a 8 magos numa plataforma circular cercada de lava. Magias c
 15. Como jogador, encontro e compro o jogo na Steam (possível, a decidir).
 
 ## Decisões de implementação
-- **Cliente de PC, não jogo de navegador**: o produto é um executável instalável (Electron) com janela própria; o navegador é só ferramenta de desenvolvimento e teste.
-- **Stack**: TypeScript + Three.js + Vite; cliente via Electron. Escolhida por ser totalmente testável e verificável em sessões de agente (testes headless + navegador).
+- **Motor**: Godot 4.6 com GDScript e renderizador Forward+. Cliente nativo de PC; gratuito, sem royalties, exporta para Windows e integra com Steam (GodotSteam). Roda por linha de comando, o que permite testar e capturar telas nas sessões de agente.
 - **Simulação determinística** em passo fixo de 30 Hz, separada do render; entrada vira `Command`. Base para bots, replays e netcode.
 - **Física 2D** no plano do chão (posição, velocidade, atrito); altura é só visual.
 - **Magias** definidas como dados (tabela) + poucos comportamentos (projétil, área, teleporte, gancho, escudo), para a loja e o balanceamento serem só números.
-- **Multiplayer**: servidor autoritativo rodando a mesma `src/sim`, WebSocket, predição no cliente. Só depois do jogo solo estar divertido.
+- **Multiplayer**: servidor autoritativo rodando a mesma `sim/` (Godot headless), ENet/WebSocket, predição no cliente. Só depois do jogo solo estar divertido.
 - **Visual**: câmera de cima com perspectiva, luz direcional com sombras, personagens estilizados low-poly, efeitos de partículas e bloom. Arte própria ou de licença livre (CC0), sempre registrada em `docs/CREDITS.md`.
 
 ## Distribuição
 Jogo comercial autopublicado para PC (Windows primeiro). Canal principal: site próprio com download do instalador. Steam é uma possibilidade futura, então nada pode impedi-la:
-- Todo asset (modelos, sons, fontes, música) precisa de licença que permita **uso comercial**; registrar origem e licença em `docs/CREDITS.md`. Dependências de código só com licenças permissivas (MIT/BSD/Apache).
+- Todo asset (modelos, sons, fontes, música) precisa de licença que permita **uso comercial**; registrar origem e licença em `docs/CREDITS.md`. Addons só com licenças permissivas (MIT/BSD/Apache).
 - Nome, magias, personagens e arte 100% próprios; verificar disponibilidade do nome final (marca, domínio, Steam) antes de divulgar — "Arcane Arena" é nome de trabalho.
-- Electron é compatível com Steam (integração Steamworks via biblioteca nativa, overlay, conquistas) — tratar numa issue própria.
+- Steam via GodotSteam (overlay, conquistas, nuvem) — tratar numa issue própria.
 - Instalador assinado e atualização automática entram junto com o site.
 
 ## Conjunto inicial de magias (nomes próprios)
 Brasa (projétil), Passo Etéreo (teleporte curto), Vendaval (empurrão em área), Corrente (puxa o alvo), Égide (reflete projéteis), Cometa (área com atraso), Fagulha Teleguiada (projétil que persegue).
 
 ## Testes
-Toda regra de jogo é testada pela interface de `src/sim` (`createWorld`/`step`). Render é verificado por teste de fumaça no navegador.
+Toda regra de jogo é testada pela interface de `sim/` (`SimWorld.new`/`step`). Render é verificado por teste de fumaça que roda o jogo e salva capturas.
 
 ## Fora de escopo (por enquanto)
 Matchmaking, contas, ranking, mobile, controle (gamepad), editor de mapas, monetização.
