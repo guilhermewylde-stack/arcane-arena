@@ -160,6 +160,12 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 		node.rotation.y = lerp_angle(node.rotation.y, mage.facing, minf(1.0, delta * 14.0))
 		_shields[mage.id].visible = world.is_shielded(mage.id)
 
+	# Partida nova com menos magos: os nós que sobraram da anterior ficam escondidos.
+	for id: int in _mages:
+		if id >= world.mages.size():
+			_mages[id].visible = false
+			_bars[id].visible = false
+
 	_draw_projectiles(world, previous.projectiles, alpha)
 	_draw_hazards(world, alpha)
 	_draw_bursts(delta)
@@ -443,6 +449,8 @@ func _draw_match(world: RefCounted, local_mage_id: int) -> void:
 		entry.add_theme_color_override("font_outline_color", Color.BLACK)
 		entry.add_theme_constant_override("outline_size", 6)
 		_scoreboard.add_child(entry)
+	for id: int in _scoreboard.get_child_count():
+		_scoreboard.get_child(id).visible = id < world.scores.size()
 	for id: int in world.scores.size():
 		var entry: Label = _scoreboard.get_child(id)
 		entry.text = "%s  %d" % [mage_name(id, local_mage_id), world.scores[id]]
@@ -460,7 +468,7 @@ func _draw_match(world: RefCounted, local_mage_id: int) -> void:
 		world.PHASE_MATCH_END:
 			var who := "Você venceu" if world.match_winner == local_mage_id \
 				else "%s venceu" % mage_name(world.match_winner, local_mage_id)
-			_banner.text = "%s a partida!\nPrimeiro a %d rodadas · F5: nova partida" % [who, world.rounds_to_win]
+			_banner.text = "%s a partida!\nPrimeiro a %d rodadas · F5: nova partida · Esc: menu" % [who, world.rounds_to_win]
 
 
 func _build_match_hud() -> void:

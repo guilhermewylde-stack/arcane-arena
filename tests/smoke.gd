@@ -1,12 +1,16 @@
 extends SceneTree
-## Teste de fumaça visual: abre o jogo, anda, empurra o boneco com Brasa, dá zoom, anda em 3ª pessoa até morrer na lava, reinicia, assiste a uma partida de bots e salva capturas.
+## Teste de fumaça visual: abre o jogo no menu, começa a partida, pausa, anda, empurra o boneco com Brasa, dá zoom, anda em 3ª pessoa até morrer na lava, reinicia, assiste a uma partida de bots e salva capturas.
 ## xvfb-run -a godot --path . --rendering-method gl_compatibility -s tests/smoke.gd -- <pasta de saída>
 
 const SimWorld := preload("res://sim/sim_world.gd")
 const Spells := preload("res://sim/spells.gd")
 
 var _main: Node
-var _frame := 0
+## Começa negativo: os quadros antes do 1 são do menu principal.
+var _frame := -30
+## Quadros que faltam do teste de pausa (o contador `_frame` espera, como a simulação).
+var _pause_left := 0
+var _pause_tick := 0
 var _failed := false
 var _round_end_frame := 0
 var _shop_frame := 0
@@ -24,7 +28,13 @@ func _initialize() -> void:
 
 
 func _process(_delta: float) -> bool:
+	if _pause_left > 0:
+		_step_pause()
+		return false
 	_frame += 1
+	if _frame < 1:
+		_step_main_menu()
+		return false
 	if _frame == 1:
 		# Primeira parte: mundo livre (sem rodadas) e os outros magos parados, como bonecos
 		# de treino. Só aqui, e não em _initialize, porque o _ready do jogo já rodou.
@@ -40,6 +50,11 @@ func _process(_delta: float) -> bool:
 	elif _frame >= 130 and _frame <= 280 and (_frame - 130) % 75 == 0:
 		# Chegou perto do boneco: lança Brasa nele sempre que a recarga deixa.
 		_main.queue_command(SimWorld.cast_command(0, Spells.EMBER, dummy.pos))
+	elif _frame == 100:
+		# Esc abre a pausa: o mundo para até o Esc seguinte.
+		_key(KEY_ESCAPE, true)
+		_pause_left = 12
+		_pause_tick = world.tick
 	elif _frame == 140:
 		_save("spell.png")
 	elif _frame == 156:
@@ -172,6 +187,29 @@ func _process(_delta: float) -> bool:
 		_fail("a segunda rodada não acabou a tempo")
 		quit(1)
 	return false
+
+
+## Menu principal: aparece ao abrir o jogo, com o mundo parado; Enter começa a partida.
+func _step_main_menu() -> void:
+	if _frame == -10:
+		_save("menu.png")
+		if not _main.menu.visible or _main.menu.mode != "main" or _main.world.tick != 0:
+			_fail("o jogo não abriu parado no menu principal")
+		_key(KEY_ENTER, true)
+	elif _frame == -5:
+		if _main.menu.visible or _main.world.tick == 0 or _main.world.phase != SimWorld.PHASE_COUNTDOWN:
+			_fail("Enter não começou a partida")
+
+
+func _step_pause() -> void:
+	_pause_left -= 1
+	if _pause_left == 4:
+		_save("pause.png")
+		if not _main.menu.visible or _main.menu.mode != "pause" or _main.world.tick > _pause_tick + 1:
+			_fail("Esc não pausou o jogo")
+		_key(KEY_ESCAPE, true)
+	elif _pause_left == 0 and _main.menu.visible:
+		_fail("Esc não fechou a pausa")
 
 
 ## Gira a mira de 3ª pessoa pelo caminho real: um evento de movimento do mouse.

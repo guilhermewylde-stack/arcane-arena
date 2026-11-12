@@ -7,26 +7,31 @@ const Spells := preload("res://sim/spells.gd")
 const Bot := preload("res://sim/bot.gd")
 const CameraRig := preload("res://render/camera_rig.gd")
 const Settings := preload("res://game/settings.gd")
+const MatchSetup := preload("res://game/match_setup.gd")
+const Menu := preload("res://game/menu.gd")
 
 const LOCAL_MAGE := 0
 const ZOOM_STEP := 0.08
-## Partida local: o jogador (id 0) e 3 bots; vence quem ganhar 3 rodadas.
+## Partida padrão: o jogador (id 0) e 3 bots; vence quem ganhar 3 rodadas. O menu troca isso.
 const WORLD_CONFIG := {"mage_count": 4, "rounds_to_win": 3}
 ## Teclas da barra de magias, na ordem dos espaços (ver `ArenaView.SLOT_LABELS`).
 const SLOT_KEYS: Array[Key] = [KEY_Q, KEY_W, KEY_E, KEY_R, KEY_D, KEY_F]
-const BOT_DIFFICULTY := "normal"
 const BOT_SEED := 20261
 ## 3ª pessoa: radianos de giro e metros de mira por pixel de mouse.
 const MOUSE_TURN := 0.004
 const MOUSE_AIM := 0.03
-const HELP_TOP := "Botão direito: mover · Q W E R D F: magias na direção do cursor · Scroll: zoom (visão de cima ↔ 3ª pessoa) · F11: tela cheia · F5: nova partida"
-const HELP_THIRD := "W A S D: mover · Mouse: girar e mirar · 1–6: escolher magia · Clique esquerdo: lançar · Scroll ou Esc: voltar à visão de cima · F11: tela cheia · F5: nova partida"
+const HELP_TOP := "Botão direito: mover · Q W E R D F: magias na direção do cursor · Scroll: zoom (visão de cima ↔ 3ª pessoa) · Esc: menu · F11: tela cheia · F5: nova partida"
+const HELP_THIRD := "W A S D: mover · Mouse: girar e mirar · 1–6: escolher magia · Clique esquerdo: lançar · Scroll: voltar à visão de cima · Esc: menu · F11: tela cheia · F5: nova partida"
 
 var world: SimWorld
 ## Depuração/testes: desligado, os outros magos ficam parados como bonecos de treino.
 var bots_enabled := true
 var _bots: Array[Bot] = []
 var view: ArenaView
+## Menu principal e de pausa; com ele aberto a simulação fica parada.
+var menu: Menu
+var bot_difficulty := "normal"
+var _config: Dictionary = WORLD_CONFIG
 var _pending: Array[Dictionary] = []
 var _previous: Dictionary
 var _accumulator := 0.0
@@ -41,7 +46,14 @@ func _ready() -> void:
 	if FileAccess.file_exists(Settings.PATH):
 		_settings = Settings.load_from()
 		Settings.apply(_settings)
-	restart()
+	menu = Menu.new()
+	menu.setup = MatchSetup.load_from()
+	menu.start_requested.connect(start_match)
+	menu.resume_requested.connect(func() -> void: menu.hide())
+	menu.main_menu_requested.connect(func() -> void: menu.show_mode(Menu.MODE_MAIN))
+	menu.quit_requested.connect(func() -> void: get_tree().quit())
+	start_match(menu.setup)
+	menu.show_mode(Menu.MODE_MAIN)
 	view = ArenaView.new(world.arena_radius)
 	add_child(view)
 	view.buy_requested.connect(buy)
@@ -55,9 +67,26 @@ func _ready() -> void:
 	var layer := CanvasLayer.new()
 	layer.add_child(hud)
 	add_child(layer)
+	add_child(menu)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F11:
+		_settings.fullscreen = DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN
+		Settings.apply(_settings)
+		Settings.save_to(Settings.PATH, _settings)
+		return
+	if menu.visible:
+		# Com o menu aberto o jogo não recebe entrada: Esc fecha a pausa, Enter começa a partida.
+		if event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_ESCAPE and menu.mode == Menu.MODE_PAUSE:
+				menu.hide()
+			elif (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER) and menu.mode == Menu.MODE_MAIN:
+				start_match(menu.setup)
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		menu.show_mode(Menu.MODE_PAUSE)
+		return
 	var third := mouse_look_active()
 	if event is InputEventMouseMotion and third:
 		# Mouse para a direita gira a mira para a direita; para cima, afasta o retículo.
@@ -78,7 +107,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			MOUSE_BUTTON_WHEEL_DOWN:
 				view.zoom += ZOOM_STEP
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
-		restart()
+		restart(_config)
 	elif event is InputEventKey and event.pressed and not event.echo and world.phase == SimWorld.PHASE_SHOP:
 		# Na loja: 1 a 7 compram a magia da linha, Espaço ou Enter encerram as compras.
 		var line: int = event.keycode - KEY_1
@@ -91,25 +120,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		var slot: int = event.keycode - KEY_1
 		if slot >= 0 and slot < world.get_mage(LOCAL_MAGE).spells.size():
 			view.selected_slot = slot
-		elif event.keycode == KEY_ESCAPE:
-			view.zoom = CameraRig.ZOOM_MAX
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode in SLOT_KEYS \
 			and not view.is_third_person():
 		cast_slot(SLOT_KEYS.find(event.keycode), get_viewport().get_mouse_position())
-	elif event is InputEventKey and event.pressed and event.keycode == KEY_F11:
-		_settings.fullscreen = DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN
-		Settings.apply(_settings)
-		Settings.save_to(Settings.PATH, _settings)
 
 
-## Começa uma partida nova (a vista reaproveita os nós dos magos).
+## Começa a partida escolhida no menu e guarda a escolha para a próxima vez que o jogo abrir.
+func start_match(setup: Dictionary) -> void:
+	bot_difficulty = MatchSetup.sanitize(setup).difficulty
+	if setup != MatchSetup.load_from():
+		MatchSetup.save_to(Settings.PATH, setup)
+	restart(MatchSetup.world_config(setup))
+
+
+## Começa uma partida nova e fecha o menu (a vista reaproveita os nós dos magos).
 ## Os testes passam outra config, por exemplo sem regras de partida.
 func restart(config: Dictionary = WORLD_CONFIG) -> void:
+	_config = config
+	menu.hide()
 	world = SimWorld.new(config)
 	_bots.clear()
 	for mage: Dictionary in world.mages:
 		if mage.id != LOCAL_MAGE:
-			_bots.append(Bot.new(mage.id, BOT_SEED + mage.id, BOT_DIFFICULTY))
+			_bots.append(Bot.new(mage.id, BOT_SEED + mage.id, bot_difficulty))
 	_previous = world.snapshot_positions()
 	_pending.clear()
 
@@ -130,7 +163,7 @@ func cast_at(slot: int, aim: Vector2) -> void:
 
 ## Controles de 3ª pessoa valendo: zoom próximo e fora das telas que precisam do cursor.
 func mouse_look_active() -> bool:
-	return view.is_third_person() and world.phase != SimWorld.PHASE_SHOP \
+	return view.is_third_person() and not menu.visible and world.phase != SimWorld.PHASE_SHOP \
 		and world.phase != SimWorld.PHASE_MATCH_END
 
 
@@ -168,7 +201,8 @@ func _process(delta: float) -> void:
 	if Input.mouse_mode != mouse_mode:
 		Input.mouse_mode = mouse_mode
 		_help.text = HELP_THIRD if third else HELP_TOP
-	_accumulator += minf(delta, 0.1)
+	# Menu aberto: o mundo fica parado (e continua desenhado ao fundo).
+	_accumulator += 0.0 if menu.visible else minf(delta, 0.1)
 	while _accumulator >= SimWorld.DT:
 		_previous = world.snapshot_positions()
 		_queue_steering(third)

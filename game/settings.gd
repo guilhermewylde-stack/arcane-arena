@@ -22,19 +22,30 @@ static func sanitize(raw: Dictionary) -> Dictionary:
 
 ## Lê as opções; arquivo ausente ou quebrado dá os padrões.
 static func load_from(path: String = PATH) -> Dictionary:
-	var file := ConfigFile.new()
-	var raw := {}
-	if file.load(path) == OK:
-		for key: String in DEFAULTS:
-			raw[key] = file.get_value(SECTION, key, null)
-	return sanitize(raw)
+	return sanitize(read_section(path, SECTION, DEFAULTS.keys()))
 
 
 static func save_to(path: String, settings: Dictionary) -> void:
+	write_section(path, SECTION, sanitize(settings))
+
+
+## Valores crus de uma seção do arquivo (só as chaves que existem nele).
+static func read_section(path: String, section: String, keys: Array) -> Dictionary:
 	var file := ConfigFile.new()
-	var clean := sanitize(settings)
-	for key: String in clean:
-		file.set_value(SECTION, key, clean[key])
+	var raw := {}
+	if FileAccess.file_exists(path) and file.load(path) == OK:
+		for key: String in keys:
+			raw[key] = file.get_value(section, key, null)
+	return raw
+
+
+## Grava uma seção sem mexer nas outras do mesmo arquivo.
+static func write_section(path: String, section: String, values: Dictionary) -> void:
+	var file := ConfigFile.new()
+	if FileAccess.file_exists(path):
+		file.load(path)
+	for key: String in values:
+		file.set_value(section, key, values[key])
 	file.save(path)
 
 
