@@ -1,5 +1,5 @@
 extends SceneTree
-## Teste de fumaça visual: abre o jogo, anda, empurra o boneco com Brasa, dá zoom, morre na lava, reinicia e salva capturas.
+## Teste de fumaça visual: abre o jogo, anda, empurra o boneco com Brasa, dá zoom, morre na lava, reinicia, assiste aos bots e salva capturas.
 ## xvfb-run -a godot --path . --rendering-method gl_compatibility -s tests/smoke.gd -- <pasta de saída>
 
 const SimWorld := preload("res://sim/sim_world.gd")
@@ -17,12 +17,14 @@ func _initialize() -> void:
 		_out = args[0]
 	_main = load("res://game/main.tscn").instantiate()
 	root.add_child(_main)
+	# Primeira parte: os outros magos ficam parados, como bonecos de treino.
+	_main.bots_enabled = false
 
 
 func _process(_delta: float) -> bool:
 	_frame += 1
 	var world: RefCounted = _main.world
-	var dummy: Dictionary = world.mages[1]
+	var dummy: Dictionary = world.mages[2]
 	if _frame == 20:
 		_save("top.png")
 		if _main.view.screen_to_ground(Vector2(root.size) * 0.5) == null:
@@ -58,12 +60,28 @@ func _process(_delta: float) -> bool:
 		print("posição: morto na lava = ", dead)
 		if not dead:
 			_fail("o mago não morreu na lava")
+		# Segunda parte: partida de verdade contra os bots, com o jogador parado.
 		_main.restart()
-	elif _frame == 760:
-		var mage: Dictionary = _main.world.mages[0]
+		_main.bots_enabled = true
+		_main.view.zoom = 1.0
+	elif _frame == 745:
+		var mage: Dictionary = world.mages[0]
 		print("posição após reiniciar: ", mage.pos, " vivo = ", mage.alive)
 		if not (mage.alive and mage.hp == SimWorld.MAX_HP):
 			_fail("reiniciar não restaurou o mago")
+	elif _frame == 860:
+		_save("bots.png")
+	elif _frame == 1040:
+		var moved := 0
+		var damaged := 0
+		var fresh: RefCounted = SimWorld.new(_main.WORLD_CONFIG)
+		for bot: Dictionary in world.mages.slice(1):
+			moved += int(bot.pos.distance_to(fresh.mages[bot.id].pos) > 1.0)
+		for any: Dictionary in world.mages:
+			damaged += int(any.hp < SimWorld.MAX_HP)
+		print("posição: bots que andaram = ", moved, " · magos feridos = ", damaged)
+		if moved < 3 or damaged == 0:
+			_fail("os bots não andaram ou não lutaram")
 		quit(1 if _failed else 0)
 	return false
 

@@ -4,13 +4,19 @@ extends Node3D
 const SimWorld := preload("res://sim/sim_world.gd")
 const ArenaView := preload("res://render/arena_view.gd")
 const Spells := preload("res://sim/spells.gd")
+const Bot := preload("res://sim/bot.gd")
 
 const LOCAL_MAGE := 0
 const ZOOM_STEP := 0.08
-## Por enquanto: o jogador (id 0) e um boneco de treino parado (id 1).
-const WORLD_CONFIG := {"mage_count": 2}
+## Partida local: o jogador (id 0) e 3 bots.
+const WORLD_CONFIG := {"mage_count": 4}
+const BOT_DIFFICULTY := "normal"
+const BOT_SEED := 20261
 
-var world := SimWorld.new(WORLD_CONFIG)
+var world: SimWorld
+## Depuração/testes: desligado, os outros magos ficam parados como bonecos de treino.
+var bots_enabled := true
+var _bots: Array[Bot] = []
 var view: ArenaView
 var _pending: Array[Dictionary] = []
 var _previous: Dictionary
@@ -18,7 +24,7 @@ var _accumulator := 0.0
 
 
 func _ready() -> void:
-	_previous = world.snapshot_positions()
+	restart()
 	view = ArenaView.new(world.arena_radius)
 	add_child(view)
 	var hud := Label.new()
@@ -58,6 +64,10 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Depuração: recomeça com um mundo novo (a vista reaproveita os nós dos magos).
 func restart() -> void:
 	world = SimWorld.new(WORLD_CONFIG)
+	_bots.clear()
+	for mage: Dictionary in world.mages:
+		if mage.id != LOCAL_MAGE:
+			_bots.append(Bot.new(mage.id, BOT_SEED + mage.id, BOT_DIFFICULTY))
 	_previous = world.snapshot_positions()
 	_pending.clear()
 
@@ -71,6 +81,9 @@ func _process(delta: float) -> void:
 	_accumulator += minf(delta, 0.1)
 	while _accumulator >= SimWorld.DT:
 		_previous = world.snapshot_positions()
+		if bots_enabled:
+			for bot in _bots:
+				_pending.append_array(bot.think(world))
 		world.step(_pending)
 		view.show_events(world.events)
 		_pending.clear()

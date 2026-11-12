@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Teste de fumaça visual: roda o jogo de verdade e salva capturas (top, spell, impact, third, lava, dead) na pasta dada.
-# Na nuvem leva uns 3 minutos (renderização por software).
+# Teste de fumaça visual: roda o jogo de verdade e salva capturas (top, spell, impact, third, lava, dead, bots) na pasta dada.
+# Na nuvem leva uns 4 minutos (renderização por software).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT_DIR="${1:?uso: tools/smoke.sh <pasta de saída>}"
