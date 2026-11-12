@@ -9,12 +9,7 @@ const Bot := preload("res://sim/bot.gd")
 const LOCAL_MAGE := 0
 const ZOOM_STEP := 0.08
 ## Partida local: o jogador (id 0) e 3 bots; vence quem ganhar 3 rodadas.
-## Até a loja existir (issue 007), todos começam com seis magias.
-const WORLD_CONFIG := {
-	"mage_count": 4,
-	"rounds_to_win": 3,
-	"loadout": [Spells.EMBER, Spells.BLINK, Spells.GALE, Spells.CHAIN, Spells.AEGIS, Spells.COMET],
-}
+const WORLD_CONFIG := {"mage_count": 4, "rounds_to_win": 3}
 ## Teclas da barra de magias, na ordem dos espaços (ver `ArenaView.SLOT_LABELS`).
 const SLOT_KEYS: Array[Key] = [KEY_Q, KEY_W, KEY_E, KEY_R, KEY_D, KEY_F]
 const BOT_DIFFICULTY := "normal"
@@ -34,6 +29,8 @@ func _ready() -> void:
 	restart()
 	view = ArenaView.new(world.arena_radius)
 	add_child(view)
+	view.buy_requested.connect(buy)
+	view.ready_requested.connect(finish_shopping)
 	var hud := Label.new()
 	hud.text = "Botão direito: mover · Q W E R D F: magias na direção do cursor · Scroll: zoom (visão de cima ↔ 3ª pessoa) · F11: tela cheia · F5: nova partida"
 	hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
@@ -58,6 +55,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				view.zoom += ZOOM_STEP
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
 		restart()
+	elif event is InputEventKey and event.pressed and not event.echo and world.phase == SimWorld.PHASE_SHOP:
+		# Na loja: 1 a 7 compram a magia da linha, Espaço ou Enter encerram as compras.
+		var line: int = event.keycode - KEY_1
+		if line >= 0 and line < Spells.TABLE.size():
+			buy(Spells.TABLE.keys()[line])
+		elif event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
+			finish_shopping()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode in SLOT_KEYS:
 		cast_slot(SLOT_KEYS.find(event.keycode), get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_F11:
@@ -84,6 +88,14 @@ func cast_slot(slot: int, screen_pos: Vector2) -> void:
 	var aim: Variant = view.screen_to_ground(screen_pos)
 	if slot < spell_ids.size() and aim != null:
 		queue_command(SimWorld.cast_command(LOCAL_MAGE, spell_ids[slot], aim))
+
+
+func buy(spell_id: String) -> void:
+	queue_command(SimWorld.buy_command(LOCAL_MAGE, spell_id))
+
+
+func finish_shopping() -> void:
+	queue_command(SimWorld.ready_command(LOCAL_MAGE))
 
 
 ## Toda entrada (jogador, bots, rede) entra no mundo por aqui.

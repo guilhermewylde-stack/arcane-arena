@@ -1,6 +1,10 @@
 extends Node3D
 ## Tudo que é visual fica aqui. Recebe o estado da simulação e só desenha.
 
+## Pedidos do jogador feitos na tela da loja; quem escuta (o jogo) transforma em comandos.
+signal buy_requested(spell_id: String)
+signal ready_requested
+
 const CameraRig := preload("res://render/camera_rig.gd")
 const Spells := preload("res://sim/spells.gd")
 
@@ -45,6 +49,10 @@ var _projectiles := {}
 var _bursts: Array[Dictionary] = []
 var _spell_icons := {}
 var _spell_bar: HBoxContainer
+var _shop: PanelContainer
+var _shop_title: Label
+var _shop_buttons := {}
+var _shop_ready_button: Button
 var _shown_spells: Array = []
 var _shields := {}
 ## Avisos de área prestes a explodir: { id: { ring: MeshInstance3D, rock: MeshInstance3D, total: int } }.
@@ -67,6 +75,7 @@ func _init(arena_radius: float) -> void:
 	_build_hud_bar()
 	_build_spell_bar()
 	_build_match_hud()
+	_build_shop()
 
 
 ## Converte um ponto da tela no ponto correspondente do chão da arena (ou null).
@@ -158,6 +167,7 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 
 	_draw_health(world, local_mage_id)
 	_draw_match(world, local_mage_id)
+	_draw_shop(world, local_mage_id)
 
 
 ## Barras de vida em tamanho fixo de tela, para ficarem legíveis em qualquer zoom.
@@ -175,7 +185,8 @@ func _draw_health(world: RefCounted, local_mage_id: int) -> void:
 	var local: Dictionary = world.get_mage(local_mage_id)
 	if not local.is_empty():
 		_set_fill(_hud_bar, local.hp / world.MAX_HP)
-		_hud_label.text = "%d / %d" % [ceili(local.hp), int(world.MAX_HP)] if local.alive else "Morto"
+		_hud_label.text = ("%d / %d" % [ceili(local.hp), int(world.MAX_HP)] if local.alive else "Morto") \
+			+ "   ·   Ouro %d" % floori(world.gold[local_mage_id])
 	if not local.is_empty():
 		if local.spells.keys() != _shown_spells:
 			_fill_spell_bar(local.spells.keys())
@@ -320,6 +331,66 @@ func _build_hud_bar() -> void:
 	_hud_label.add_theme_constant_override("outline_size", 4)
 	_hud_bar.add_child(_hud_label)
 	_hud.add_child(_hud_bar)
+
+
+## Loja entre rodadas: uma linha por magia com nível e preço; fica apagado o que não dá para comprar.
+func _draw_shop(world: RefCounted, local_mage_id: int) -> void:
+	_shop.visible = world.phase == world.PHASE_SHOP
+	if not _shop.visible:
+		return
+	_shop_title.text = "Loja  ·  Ouro %d  ·  %d s" % [floori(world.gold[local_mage_id]), ceili(world.phase_seconds_left())]
+	var spells: Dictionary = world.get_mage(local_mage_id).spells
+	var number := 1
+	for spell_id: String in _shop_buttons:
+		var button: Button = _shop_buttons[spell_id]
+		var cost: int = world.price(local_mage_id, spell_id)
+		var level: int = spells.get(spell_id, 0)
+		var offer := "nível máximo" if level >= Spells.MAX_LEVEL else "barra cheia"
+		if cost >= 0:
+			offer = ("comprar" if level == 0 else "nível %d → %d" % [level, level + 1]) + "  ·  %d ouro" % cost
+		button.text = "%d   %s  —  %s" % [number, Spells.TABLE[spell_id].name, offer]
+		button.disabled = not world.can_buy(local_mage_id, spell_id)
+		number += 1
+	var done: bool = world.shop_ready[local_mage_id]
+	_shop_ready_button.disabled = done
+	_shop_ready_button.text = "Aguardando os outros..." if done else "Pronto (Espaço)"
+
+
+func _build_shop() -> void:
+	_shop = PanelContainer.new()
+	_shop.set_anchors_preset(Control.PRESET_CENTER)
+	_shop.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_shop.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_shop.visible = false
+	var backdrop := StyleBoxFlat.new()
+	backdrop.bg_color = Color(0.07, 0.05, 0.1, 0.94)
+	backdrop.set_corner_radius_all(8)
+	_shop.add_theme_stylebox_override("panel", backdrop)
+	var margin := MarginContainer.new()
+	for side: String in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 18)
+	_shop.add_child(margin)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 6)
+	margin.add_child(column)
+	_shop_title = Label.new()
+	_shop_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_shop_title.add_theme_font_size_override("font_size", 24)
+	column.add_child(_shop_title)
+	for spell_id: String in Spells.TABLE:
+		var button := Button.new()
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.custom_minimum_size = Vector2(430, 0)
+		button.focus_mode = Control.FOCUS_NONE
+		button.add_theme_color_override("font_color", Spells.TABLE[spell_id].color.lightened(0.3))
+		button.pressed.connect(func() -> void: buy_requested.emit(spell_id))
+		column.add_child(button)
+		_shop_buttons[spell_id] = button
+	_shop_ready_button = Button.new()
+	_shop_ready_button.focus_mode = Control.FOCUS_NONE
+	_shop_ready_button.pressed.connect(func() -> void: ready_requested.emit())
+	column.add_child(_shop_ready_button)
+	_hud.add_child(_shop)
 
 
 static func mage_name(id: int, local_mage_id: int) -> String:

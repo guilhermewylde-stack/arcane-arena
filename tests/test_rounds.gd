@@ -5,7 +5,7 @@ const Spells := preload("res://sim/spells.gd")
 
 
 func _match(extra := {}) -> RefCounted:
-	var config := {"mage_count": 2, "rounds_to_win": 2}
+	var config := {"mage_count": 2, "rounds_to_win": 2, "shop_seconds": 0.0}
 	config.merge(extra, true)
 	return SimWorld.new(config)
 

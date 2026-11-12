@@ -145,7 +145,7 @@ func test_fagulha_teleguiada_faz_curva_ate_o_alvo() -> void:
 
 
 func test_magias_continuam_com_o_mago_na_rodada_seguinte() -> void:
-	var world := SimWorld.new({"mage_count": 2, "rounds_to_win": 2, "loadout": [Spells.EMBER, Spells.GALE]})
+	var world := SimWorld.new({"mage_count": 2, "rounds_to_win": 2, "shop_seconds": 0.0, "loadout": [Spells.EMBER, Spells.GALE]})
 	for i in roundi(SimWorld.COUNTDOWN_SECONDS * SimWorld.TICK_RATE):
 		world.step()
 	world.mages[1].pos = Vector2(1000, 0)

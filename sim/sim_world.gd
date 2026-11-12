@@ -24,6 +24,16 @@ const PHASE_COUNTDOWN := "countdown"
 const PHASE_ROUND := "round"
 const PHASE_ROUND_END := "round_end"
 const PHASE_MATCH_END := "match_end"
+## Loja entre rodadas: ninguém age; valem só os comandos `buy` e `ready`.
+const PHASE_SHOP := "shop"
+const DEFAULT_SHOP_SECONDS := 20.0
+const MAX_SPELL_SLOTS := 6
+## Ouro: por ponto de dano causado em outro mago, por abate (último a acertar quem morreu),
+## por vencer a rodada e, para todos, por rodada jogada.
+const GOLD_PER_DAMAGE := 1.0
+const GOLD_PER_KILL := 20.0
+const GOLD_ROUND_WIN := 30.0
+const GOLD_PER_ROUND := 15.0
 const COUNTDOWN_SECONDS := 3.0
 const ROUND_END_SECONDS := 3.0
 const DEFAULT_SHRINK_DELAY := 10.0
@@ -35,7 +45,8 @@ var arena_radius := DEFAULT_ARENA_RADIUS
 ## Cada mago: { id: int, pos: Vector2, facing: float, move_target: Variant (Vector2 ou null),
 ## hp: float, alive: bool, vel: Vector2 (velocidade de empurrão),
 ## cooldowns: { id da magia: tick em que volta a ficar pronta },
-## spells: { id da magia: nível } na ordem da barra, shield_until: tick em que o escudo acaba }.
+## spells: { id da magia: nível } na ordem da barra, shield_until: tick em que o escudo acaba,
+## last_hit_by: id de quem acertou por último nesta rodada (-1: ninguém) }.
 ## `facing` é o ângulo em torno de Y; 0 aponta para +z.
 ## Mago morto fica na lista, mas não age nem se move.
 var mages: Array[Dictionary] = []
@@ -53,6 +64,10 @@ var phase := PHASE_ROUND
 var round_number := 1
 ## Rodadas vencidas por cada mago (índice = id).
 var scores: Array[int] = []
+## Ouro de cada mago (índice = id); acumula pela partida inteira.
+var gold: Array[float] = []
+## Na loja: quem já avisou que terminou as compras (índice = id).
+var shop_ready: Array[bool] = []
 ## Vencedor da última rodada encerrada (-1: empate ou ainda não houve).
 var round_winner := -1
 ## Vencedor da partida (-1 enquanto ela não acaba).
@@ -71,11 +86,13 @@ var _round_ticks := 0
 var _shrink_delay := DEFAULT_SHRINK_DELAY
 var _shrink_rate := DEFAULT_SHRINK_RATE
 var _min_arena_radius := DEFAULT_MIN_ARENA_RADIUS
+var _shop_seconds := DEFAULT_SHOP_SECONDS
 
 
 ## Config (tudo opcional): mage_count, arena_radius, rounds_to_win,
 ## shrink_delay (s), shrink_rate (unidades/s), min_arena_radius,
-## loadout (ids das magias com que todo mago começa; padrão: só Brasa).
+## loadout (ids das magias com que todo mago começa; padrão: só Brasa),
+## shop_seconds (duração da loja entre rodadas; 0 = sem loja).
 func _init(config: Dictionary = {}) -> void:
 	initial_arena_radius = config.get("arena_radius", DEFAULT_ARENA_RADIUS)
 	_mage_count = config.get("mage_count", 1)
@@ -83,8 +100,11 @@ func _init(config: Dictionary = {}) -> void:
 	_shrink_delay = config.get("shrink_delay", DEFAULT_SHRINK_DELAY)
 	_shrink_rate = config.get("shrink_rate", DEFAULT_SHRINK_RATE)
 	_min_arena_radius = config.get("min_arena_radius", DEFAULT_MIN_ARENA_RADIUS)
+	_shop_seconds = config.get("shop_seconds", DEFAULT_SHOP_SECONDS)
 	for i in _mage_count:
 		scores.append(0)
+		gold.append(0.0)
+		shop_ready.append(false)
 		var spells := {}
 		for spell_id: String in config.get("loadout", [Spells.EMBER]):
 			spells[spell_id] = 1
@@ -96,6 +116,16 @@ func _init(config: Dictionary = {}) -> void:
 
 static func move_command(mage_id: int, target: Vector2) -> Dictionary:
 	return {"type": "move", "mage_id": mage_id, "target": target}
+
+
+## Compra a magia ou, se o mago já a tem, sobe um nível. Só vale na loja.
+static func buy_command(mage_id: int, spell_id: String) -> Dictionary:
+	return {"type": "buy", "mage_id": mage_id, "spell": spell_id}
+
+
+## Avisa que o mago terminou as compras; a loja fecha quando todos avisam.
+static func ready_command(mage_id: int) -> Dictionary:
+	return {"type": "ready", "mage_id": mage_id}
 
 
 static func cast_command(mage_id: int, spell_id: String, target: Vector2) -> Dictionary:
@@ -113,6 +143,9 @@ func step(commands: Array = []) -> void:
 		_phase_ticks -= 1
 		if _phase_ticks <= 0:
 			phase = PHASE_ROUND
+		return
+	if phase == PHASE_SHOP:
+		_step_shop(commands)
 		return
 
 	for cmd: Dictionary in commands:
@@ -147,7 +180,7 @@ func step(commands: Array = []) -> void:
 
 ## Segundos que faltam para a fase atual acabar (0 nas fases sem prazo).
 func phase_seconds_left() -> float:
-	if phase == PHASE_COUNTDOWN or phase == PHASE_ROUND_END:
+	if phase == PHASE_COUNTDOWN or phase == PHASE_ROUND_END or phase == PHASE_SHOP:
 		return _phase_ticks * DT
 	return 0.0
 
@@ -170,6 +203,22 @@ func cooldown_fraction(mage_id: int, spell_id: String) -> float:
 		return 0.0
 	var remaining: int = mage.cooldowns.get(spell_id, 0) - tick
 	return clampf(float(remaining) / _ticks(_stats(mage, spell_id).cooldown), 0.0, 1.0)
+
+
+## Quanto o mago paga agora por essa magia: compra, melhoria, ou -1 se não há o que comprar
+## (magia desconhecida, nível máximo ou barra cheia).
+func price(mage_id: int, spell_id: String) -> int:
+	var mage := get_mage(mage_id)
+	if mage.is_empty() or not Spells.TABLE.has(spell_id):
+		return -1
+	if mage.spells.has(spell_id):
+		return Spells.TABLE[spell_id].upgrade_cost if mage.spells[spell_id] < Spells.MAX_LEVEL else -1
+	return Spells.TABLE[spell_id].cost if mage.spells.size() < MAX_SPELL_SLOTS else -1
+
+
+func can_buy(mage_id: int, spell_id: String) -> bool:
+	var cost := price(mage_id, spell_id)
+	return phase == PHASE_SHOP and cost >= 0 and gold[mage_id] >= cost
 
 
 func is_shielded(mage_id: int) -> bool:
@@ -215,6 +264,7 @@ func _reset_round() -> void:
 			"cooldowns": {},
 			"spells": _loadouts[i],
 			"shield_until": 0,
+			"last_hit_by": -1,
 		})
 
 
@@ -229,8 +279,11 @@ func _check_round_over() -> void:
 	if alive.size() > 1:
 		return
 	round_winner = alive[0].id if alive.size() == 1 else -1
+	for i in _mage_count:
+		gold[i] += GOLD_PER_ROUND
 	if round_winner >= 0:
 		scores[round_winner] += 1
+		gold[round_winner] += GOLD_ROUND_WIN
 	_enter(PHASE_ROUND_END, ROUND_END_SECONDS)
 
 
@@ -241,7 +294,28 @@ func _finish_round_end() -> void:
 		return
 	round_number += 1
 	_reset_round()
-	_enter(PHASE_COUNTDOWN, COUNTDOWN_SECONDS)
+	if _shop_seconds > 0.0:
+		shop_ready.fill(false)
+		_enter(PHASE_SHOP, _shop_seconds)
+	else:
+		_enter(PHASE_COUNTDOWN, COUNTDOWN_SECONDS)
+
+
+func _step_shop(commands: Array) -> void:
+	for cmd: Dictionary in commands:
+		if get_mage(cmd.mage_id).is_empty():
+			continue
+		match cmd.type:
+			"buy":
+				if can_buy(cmd.mage_id, cmd.spell):
+					gold[cmd.mage_id] -= price(cmd.mage_id, cmd.spell)
+					var spells: Dictionary = _loadouts[cmd.mage_id]
+					spells[cmd.spell] = spells.get(cmd.spell, 0) + 1
+			"ready":
+				shop_ready[cmd.mage_id] = true
+	_phase_ticks -= 1
+	if _phase_ticks <= 0 or not shop_ready.has(false):
+		_enter(PHASE_COUNTDOWN, COUNTDOWN_SECONDS)
 
 
 func _ticks(seconds: float) -> int:
@@ -280,7 +354,7 @@ func _cast(mage: Dictionary, spell_id: String, target: Vector2) -> void:
 			event.pos = mage.pos
 			events.append(event)
 		"nova":
-			_blast(mage.pos, spell, mage.id)
+			_blast(mage.pos, spell, mage.id, mage.id)
 			events.append(event.merged({"type": "nova", "radius": spell.radius}))
 		"shield":
 			mage.shield_until = tick + _ticks(spell.duration)
@@ -358,7 +432,7 @@ func _first_mage_hit(projectile: Dictionary, from: Vector2, to: Vector2, reach: 
 
 
 func _hit(victim: Dictionary, projectile: Dictionary, spell: Dictionary) -> void:
-	_damage(victim, spell.damage)
+	_damage(victim, spell.damage, projectile.owner)
 	var owner := get_mage(projectile.owner)
 	if spell.has("pull") and not owner.is_empty():
 		# Puxão: velocidade fixa na direção de quem lançou, substituindo o empurrão atual.
@@ -394,13 +468,13 @@ func _push(victim: Dictionary, dir: Vector2, knockback: float) -> void:
 
 ## Explosão em área: fere e empurra para longe do centro todo mago vivo no raio,
 ## menos `immune_id` (quem lançou um Vendaval; -1 = ninguém escapa).
-func _blast(center: Vector2, spell: Dictionary, immune_id: int) -> void:
+func _blast(center: Vector2, spell: Dictionary, source_id: int, immune_id: int) -> void:
 	for mage in mages:
 		if not mage.alive or mage.id == immune_id:
 			continue
 		if mage.pos.distance_to(center) > spell.radius + MAGE_RADIUS:
 			continue
-		_damage(mage, spell.damage)
+		_damage(mage, spell.damage, source_id)
 		var away: Vector2 = center.direction_to(mage.pos)
 		_push(mage, away if away != Vector2.ZERO else Vector2.RIGHT, spell.knockback)
 
@@ -413,7 +487,7 @@ func _step_hazards() -> void:
 			pending.append(hazard)
 			continue
 		var spell: Dictionary = Spells.stats(hazard.spell, hazard.level)
-		_blast(hazard.pos, spell, -1)
+		_blast(hazard.pos, spell, hazard.owner, -1)
 		events.append({"type": "explosion", "pos": hazard.pos, "spell": hazard.spell, "radius": spell.radius})
 	hazards = pending
 
@@ -440,9 +514,18 @@ func _move_mage(mage: Dictionary) -> void:
 	mage.pos += to_target / dist * max_step
 
 
-func _damage(mage: Dictionary, amount: float) -> void:
-	mage.hp = maxf(0.0, mage.hp - amount)
+## Tira vida. `source_id` é o mago que causou o dano (-1: a lava); ele ganha ouro pelo
+## dano em outros magos e fica marcado como o último a acertar, para levar o abate.
+func _damage(mage: Dictionary, amount: float, source_id := -1) -> void:
+	var dealt: float = minf(amount, mage.hp)
+	mage.hp -= dealt
+	if source_id >= 0 and source_id != mage.id:
+		gold[source_id] += dealt * GOLD_PER_DAMAGE
+		mage.last_hit_by = source_id
 	if mage.hp <= 0.0:
+		mage.hp = 0.0
 		mage.alive = false
 		mage.move_target = null
 		mage.vel = Vector2.ZERO
+		if mage.last_hit_by >= 0:
+			gold[mage.last_hit_by] += GOLD_PER_KILL

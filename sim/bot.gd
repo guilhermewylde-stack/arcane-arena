@@ -45,7 +45,11 @@ func _init(id: int, seed_value: int, difficulty_name := "normal") -> void:
 
 func think(world: RefCounted) -> Array:
 	var me: Dictionary = world.get_mage(mage_id)
-	if me.is_empty() or not me.alive:
+	if me.is_empty():
+		return []
+	if world.phase == SimWorld.PHASE_SHOP:
+		return _shop(world)
+	if not me.alive:
 		return []
 	var commands := []
 	var enemy := _nearest_enemy(world, me)
@@ -90,6 +94,22 @@ func _nearest_enemy(world: RefCounted, me: Dictionary) -> Dictionary:
 	var tied := enemies.filter(
 		func(mage: Dictionary) -> bool: return me.pos.distance_to(mage.pos) <= nearest + TARGET_TIE_MARGIN)
 	return tied[0] if tied.size() == 1 else tied[_rng.randi() % tied.size()]
+
+
+## Na loja: compra uma coisa por tick, sorteada entre o que o ouro alcança (de preferência
+## magia nova); quando não dá para comprar mais nada, avisa que está pronto.
+func _shop(world: RefCounted) -> Array:
+	if world.shop_ready[mage_id]:
+		return []
+	var new_spells := []
+	var upgrades := []
+	for spell_id: String in Spells.TABLE:
+		if world.can_buy(mage_id, spell_id):
+			(upgrades if world.get_mage(mage_id).spells.has(spell_id) else new_spells).append(spell_id)
+	var options := new_spells if not new_spells.is_empty() else upgrades
+	if options.is_empty():
+		return [SimWorld.ready_command(mage_id)]
+	return [SimWorld.buy_command(mage_id, options[_rng.randi() % options.size()])]
 
 
 ## Onde lançar a magia agora, ou null se não vale a pena. Uma regra por comportamento.

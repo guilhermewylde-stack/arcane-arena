@@ -9,8 +9,9 @@ var _main: Node
 var _frame := 0
 var _failed := false
 var _round_end_frame := 0
+var _shop_frame := 0
 
-const MATCH_CONFIG := {"mage_count": 4, "rounds_to_win": 1, "shrink_delay": 1.0, "shrink_rate": 5.0, "min_arena_radius": 0.0}
+const MATCH_CONFIG := {"mage_count": 4, "rounds_to_win": 2, "shrink_delay": 1.0, "shrink_rate": 5.0, "min_arena_radius": 0.0}
 var _out := "user://"
 
 
@@ -115,12 +116,32 @@ func _process(_delta: float) -> bool:
 		_save("round_end.png")
 		print("posição: rodada acabou no quadro ", _round_end_frame, " · vencedor = ", world.round_winner,
 			" · placar = ", world.scores)
-	elif _round_end_frame > 0 and world.phase == SimWorld.PHASE_MATCH_END:
-		_save("match_end.png")
-		print("posição: partida acabou · vencedor = ", world.match_winner)
+	elif _shop_frame == 0 and world.phase == SimWorld.PHASE_SHOP:
+		_shop_frame = _frame
+	elif _shop_frame > 0 and _frame == _shop_frame + 30:
+		# Na loja: os bots já compraram; o jogador compra o que o ouro dele alcança e encerra.
+		_save("shop.png")
+		var bought := 0
+		for bot: Dictionary in world.mages.slice(1):
+			for level: int in bot.spells.values():
+				bought += level
+			bought -= 1
+		print("posição: loja · ouro = ", world.gold, " · compras dos bots = ", bought)
+		if bought == 0:
+			_fail("nenhum bot comprou nada")
+		_main.buy(Spells.EMBER)
+		_main.finish_shopping()
+	elif _shop_frame > 0 and _frame == _shop_frame + 40:
+		print("posição: jogador após a loja = ", world.mages[0].spells, " · fase = ", world.phase)
+		if world.phase != SimWorld.PHASE_COUNTDOWN:
+			_fail("a loja não fechou com todos prontos")
+	elif world.round_number == 2 and world.phase == SimWorld.PHASE_ROUND_END:
+		# A segunda rodada (já com as compras) também chegou ao fim: basta.
+		_save("round2_end.png")
+		print("posição: 2ª rodada acabou no quadro ", _frame, " · placar = ", world.scores, " · ouro = ", world.gold)
 		quit(1 if _failed else 0)
-	elif _frame == 2400:
-		_fail("a partida não acabou a tempo")
+	elif _frame == 3200:
+		_fail("a segunda rodada não acabou a tempo")
 		quit(1)
 	return false
 
