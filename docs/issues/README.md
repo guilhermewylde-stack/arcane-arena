@@ -1,0 +1,20 @@
+# Issues (fatias verticais)
+
+Cada issue entrega algo jogável de ponta a ponta. Fazer em ordem, salvo indicação.
+AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário antes.
+
+| # | Título | Tipo | Depende de | Status |
+|---|--------|------|-----------|--------|
+| 001 | Esqueleto andante: arena, mago, mover, zoom | AFK | — | concluída |
+| 002 | Vida, lava e morte | AFK | 001 | aberta |
+| 003 | Primeira magia: Brasa (projétil, dano, empurrão) | AFK | 002 | aberta |
+| 004 | Bots | AFK | 003 | aberta |
+| 005 | Rodadas: arena que encolhe, vitória, placar | AFK | 004 | aberta |
+| 006 | Barra de magias e mais 6 magias | AFK | 003 | aberta |
+| 007 | Ouro e loja entre rodadas | AFK | 005, 006 | aberta |
+| 008 | Controles de 3ª pessoa (WASD + mira) | AFK | 003 | aberta |
+| 009 | Passe visual: modelos, animações, partículas, lava, bloom | HITL | 006 | aberta |
+| 010 | Áudio | HITL | 006 | aberta |
+| 011 | Executável de PC (Electron, build Windows) | AFK | 005 | aberta |
+| 012 | Menu, opções e teclas configuráveis | AFK | 007 | aberta |
+| 013 | Multiplayer online | HITL | 007 | aberta |

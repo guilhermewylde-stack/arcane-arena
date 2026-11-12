@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arcane Arena</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0710; }
+      canvas { display: block; }
+      #hud { position: fixed; left: 12px; bottom: 10px; color: #e8dcc8; font: 13px/1.4 system-ui, sans-serif;
+             text-shadow: 0 1px 2px #000; pointer-events: none; user-select: none; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">Botão direito: mover · Scroll: zoom (visão de cima ↔ 3ª pessoa)</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
