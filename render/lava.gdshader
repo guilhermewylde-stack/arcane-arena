@@ -1,5 +1,5 @@
 shader_type spatial;
-// Lava: crosta escura com veios incandescentes que escorrem devagar. Ruído calculado aqui mesmo (sem texturas).
+// Lava estilizada: faixas de cor quente que escorrem devagar. Ruído calculado aqui mesmo (sem texturas).
 render_mode unshaded;
 
 uniform float energy = 1.0;
@@ -33,17 +33,17 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 p = world_pos.xz * 0.11;
-	float t = TIME * 0.05;
+	vec2 p = world_pos.xz * 0.1;
+	float t = TIME * 0.06;
 	vec2 warp = vec2(fbm(p + vec2(t, 0.0)), fbm(p + vec2(5.2, 1.3) - vec2(0.0, t)));
-	float n = fbm(p * 1.7 + warp * 1.6 + vec2(0.0, t * 0.5));
-	// Crosta escura na maior parte; veios finos e quentes onde o ruído cruza o meio e um
-	// vermelho abafado nas poças onde ele é baixo.
-	float veins = 1.0 - smoothstep(0.0, 0.05, abs(n - 0.5));
-	float pools = smoothstep(0.42, 0.18, n);
-	float heat = clamp(veins * 0.9 + pools * 0.3, 0.0, 1.0);
-	vec3 color = mix(vec3(0.03, 0.006, 0.004), vec3(0.42, 0.03, 0.006), smoothstep(0.0, 0.4, heat));
-	color = mix(color, vec3(1.0, 0.32, 0.03), smoothstep(0.4, 0.8, heat));
-	color = mix(color, vec3(1.0, 0.75, 0.35), smoothstep(0.85, 1.0, heat));
-	ALBEDO = color * (1.0 + heat * 0.8) * energy;
+	float n = fbm(p * 1.5 + warp * 1.4 + vec2(0.0, t * 0.5));
+	// Lava de desenho: faixas chapadas do vermelho ao amarelo, com ilhas de crosta marrom.
+	float heat = smoothstep(0.25, 0.75, n);
+	float bands = floor(heat * 5.0 + 0.5) / 5.0;
+	heat = mix(heat, bands, 0.75);
+	vec3 color = mix(vec3(0.62, 0.08, 0.02), vec3(0.95, 0.3, 0.03), smoothstep(0.0, 0.5, heat));
+	color = mix(color, vec3(1.0, 0.7, 0.15), smoothstep(0.55, 1.0, heat));
+	float crust = smoothstep(0.6, 0.66, fbm(p * 2.3 - warp + vec2(31.0, 7.0)));
+	color = mix(color, vec3(0.2, 0.06, 0.04), crust * 0.85);
+	ALBEDO = color * energy;
 }

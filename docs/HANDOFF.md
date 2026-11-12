@@ -8,14 +8,14 @@ Comece rodando bash tools/setup_godot.sh.
 Todas as issues AFK estão concluídas; as abertas (010 áudio, 013 multiplayer, 014 site, 015 Steam) são HITL.
 Antes de codar, me faça as perguntas da issue que eu escolher abaixo e espere minhas respostas:
 Issue escolhida: <010 ou 013, ou "ajustes" para só corrigir o que achei jogando>
-Meu retorno depois de jogar o .exe: <o que achei do visual novo (brilho, escuridão, tamanho do mago), controles, câmera, balanceamento, bugs>
+Meu retorno depois de jogar o .exe: <o que achei do visual novo (cores, claridade, tamanho do mago), controles, câmera, balanceamento, bugs>
 No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ```
 
 ## Estado atual
 - Motor: Godot 4.6, GDScript.
 - Concluídas: 001–009, 011, 012, 016, 017. Abertas (todas HITL): 010, 013, 014, 015.
-- Visual (009): direção **sombrio vulcânico**; mago animado do KayKit (CC0), shaders de lava e rocha, partículas, bloom. Só foi visto no renderizador de software da nuvem.
+- Visual (009): direção **fantasia clara e colorida** (o usuário rejeitou a 1ª versão, sombria, e citou Magicka como referência de clima — seguir o clima, nunca copiar o visual); mago animado do KayKit (CC0) de manto na cor do jogador, lava de desenho, pedra com musgo, céu azul. Só foi visto no renderizador de software da nuvem.
 - 126 testes passando (`bash tools/check.sh`); o CI do GitHub roda os testes e exporta o `.exe` a cada push.
 - O jogo abre no menu principal; a partida padrão é 1 jogador + 3 bots `normal`, primeiro a 3 rodadas. Todos começam só com Brasa.
 - **O usuário ainda não jogou nada à mão.** Tudo que é sensação (sensibilidade do mouse, câmera de ombro, distância da mira, dano, empurrão, preços, tempos) é chute inicial. O primeiro passo útil é ele baixar o `.exe` e contar o que achou.
@@ -23,7 +23,7 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ## Pendências do usuário
 - Baixar o `ArcaneArena.exe`: GitHub → aba Actions → última execução do "CI" → artefato `ArcaneArena-windows` (precisa estar logado). Confirmar que abre e roda (último item do aceite da 011). O Windows deve mostrar o aviso do SmartScreen, porque o `.exe` não é assinado (assinatura é a issue 014).
 - Para publicar uma release baixável sem login: criar uma tag `v*` (ex.: `git tag v0.1.0 && git push origin v0.1.0`). Esse caminho do workflow ainda não foi exercitado.
-- Olhar o visual novo no PC (Forward+) e dizer o que ajustar: brilho do bloom, chão escuro demais ou não, chapéu tapando a mira em 3ª pessoa.
+- Olhar o visual novo no PC (Forward+) e dizer o que ajustar: claro demais ou não, musgo, brilho das magias, chapéu tapando a mira em 3ª pessoa.
 - Decidir a próxima issue HITL (010 áudio ou 013 multiplayer).
 
 ## Mapa rápido

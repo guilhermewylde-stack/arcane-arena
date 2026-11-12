@@ -201,7 +201,7 @@ func draw_world(world: RefCounted, previous: Dictionary, alpha: float, local_mag
 	_draw_bursts(delta)
 
 	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
-	_lava_material.set_shader_parameter("energy", 0.9 + pulse * 0.2)
+	_lava_material.set_shader_parameter("energy", 0.8 + pulse * 0.1)
 	_rock_material.set_shader_parameter("edge_radius", world.arena_radius)
 	_rock_material.set_shader_parameter("pulse", 0.5 + 0.5 * sin(_time * 4.0))
 
@@ -286,10 +286,10 @@ func _draw_hazards(world: RefCounted, alpha: float) -> void:
 
 
 func _create_hazard(hazard: Dictionary, spell: Dictionary) -> Dictionary:
-	var warn := Fx.additive_material(spell.color)
+	var warn := Fx.flat_material(spell.color)
 	var ring := _add_mesh(_ring_mesh(spell.radius - 0.25, spell.radius), warn, self)
 	ring.position = Vector3(hazard.pos.x, 0.04, hazard.pos.y)
-	var glow := Fx.glow_material(spell.color.lightened(0.3), 3.0)
+	var glow := Fx.glow_material(spell.color.darkened(0.2), 1.2)
 	var rock_mesh := SphereMesh.new()
 	rock_mesh.radius = 0.8
 	rock_mesh.height = 1.6
@@ -321,18 +321,18 @@ func _create_projectile(id: int, spell: Dictionary) -> Node3D:
 	var mesh := SphereMesh.new()
 	mesh.radius = spell.radius * 0.7
 	mesh.height = spell.radius * 1.4
-	var node := _add_mesh(mesh, Fx.glow_material(spell.color.lightened(0.55), 5.0), self)
+	var node := _add_mesh(mesh, Fx.glow_material(spell.color.lightened(0.3), 1.8), self)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var halo_mesh := SphereMesh.new()
 	halo_mesh.radius = spell.radius * 1.6
 	halo_mesh.height = spell.radius * 3.2
-	var halo := _add_mesh(halo_mesh, Fx.additive_material(Color(spell.color, 0.2)), node)
+	var halo := _add_mesh(halo_mesh, Fx.flat_material(Color(spell.color, 0.3)), node)
 	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.add_child(Fx.trail(spell.color, spell.radius * 0.7))
 	var light := OmniLight3D.new()
 	light.light_color = spell.color
-	light.light_energy = 3.0
-	light.omni_range = 7.0
+	light.light_energy = 1.2
+	light.omni_range = 4.0
 	node.add_child(light)
 	_projectiles[id] = node
 	return node
@@ -341,7 +341,7 @@ func _create_projectile(id: int, spell: Dictionary) -> Node3D:
 ## Clarão que cresce e some: marca onde um projétil acertou ou se apagou.
 ## Com `shape` (um anel de raio 1) vira onda de choque no chão.
 func _spawn_burst(at: Vector3, color: Color, size: float, shape: Mesh = null) -> void:
-	var material := Fx.additive_material(color.lightened(0.4))
+	var material := Fx.flat_material(color.lightened(0.4))
 	var mesh := shape
 	if mesh == null:
 		var sphere := SphereMesh.new()
@@ -583,40 +583,41 @@ func _create_spell_icon(spell_id: String, key_label: String) -> ColorRect:
 
 
 func _build_environment(arena_radius: float) -> void:
-	# Sombrio vulcânico: quase tudo escuro; a lava e as magias é que acendem a cena.
+	# Fantasia clara: dia de céu azul, sol quente, cores vivas. A lava é só o perigo, não a luz da cena.
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color("3d7fd6")
+	sky_material.sky_horizon_color = Color("cfe4f7")
+	sky_material.ground_bottom_color = Color("c9783a")
+	sky_material.ground_horizon_color = Color("f0c9a0")
+	var sky := Sky.new()
+	sky.sky_material = sky_material
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("050304")
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("7a4030")
-	env.ambient_light_energy = 0.35
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.ambient_light_color = Color("dfe6ff")
+	env.ambient_light_energy = 0.4
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
-	env.glow_bloom = 0.05
-	env.glow_hdr_threshold = 1.0
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
-	env.fog_enabled = true
-	env.fog_light_color = Color("2c0a05")
-	env.fog_density = 0.008
+	env.glow_intensity = 0.35
+	env.glow_hdr_threshold = 1.1
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.08
-	env.adjustment_saturation = 1.1
+	env.adjustment_saturation = 1.15
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
-	# Luar frio de cima (dá forma e sombra) e o clarão da lava de baixo (acende queixos, abas e laterais).
-	var moon := DirectionalLight3D.new()
-	moon.light_color = Color("a8b8e8")
-	moon.light_energy = 0.9
-	moon.shadow_enabled = true
-	moon.directional_shadow_max_distance = arena_radius * 4.0
-	moon.rotation_degrees = Vector3(-58, -40, 0)
-	add_child(moon)
+	# Sol quente de cima (forma e sombra) e um leve clarão da lava de baixo.
+	var sun := DirectionalLight3D.new()
+	sun.light_color = Color("fff2d6")
+	sun.light_energy = 0.95
+	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = arena_radius * 4.0
+	sun.rotation_degrees = Vector3(-55, -40, 0)
+	add_child(sun)
 	var underglow := DirectionalLight3D.new()
-	underglow.light_color = Color("ff5a1a")
-	underglow.light_energy = 0.9
+	underglow.light_color = Color("ff7a2a")
+	underglow.light_energy = 0.25
 	underglow.rotation_degrees = Vector3(65, 30, 0)
 	add_child(underglow)
 
@@ -646,7 +647,7 @@ func _build_arena(arena_radius: float) -> void:
 
 	# Anéis decorativos para dar leitura de distância no chão.
 	var groove := StandardMaterial3D.new()
-	groove.albedo_color = Color("2b2833")
+	groove.albedo_color = Color("5f584c")
 	for fraction: float in [0.33, 0.66, 0.98]:
 		var ring := _add_mesh(_ring_mesh(arena_radius * fraction - 0.12, arena_radius * fraction), groove, _arena_root)
 		ring.position.y = 0.01

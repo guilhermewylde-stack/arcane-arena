@@ -17,13 +17,12 @@ static func glow_material(color: Color, energy: float) -> StandardMaterial3D:
 	return material
 
 
-## Material sem sombra que soma luz ao que está atrás (clarões, halos, anéis de onda).
-static func additive_material(color: Color) -> StandardMaterial3D:
+## Material chapado e translúcido, sem sombra (clarões, halos, anéis no chão, ondas de choque).
+static func flat_material(color: Color) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return material
 
@@ -65,7 +64,7 @@ static func flames() -> CPUParticles3D:
 
 ## Brasas subindo devagar de toda a lava: dão vida e profundidade ao fundo escuro.
 static func embers(extent: float) -> CPUParticles3D:
-	var particles := _particles(Color(1.0, 0.4, 0.08), 160, 7.0, 0.14)
+	var particles := _particles(Color(1.0, 0.55, 0.1), 70, 7.0, 0.14)
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	particles.emission_box_extents = Vector3(extent, 0.1, extent)
 	particles.direction = Vector3.UP
@@ -88,7 +87,7 @@ static func _particles(color: Color, amount: int, lifetime: float, size: float) 
 	particles.scale_amount_max = size
 	particles.color = color
 	var fade := Gradient.new()
-	fade.set_color(0, Color(1, 1, 1, 0.7))
+	fade.set_color(0, Color(1, 1, 1, 0.9))
 	fade.set_color(1, Color(1, 1, 1, 0.0))
 	particles.color_ramp = fade
 	particles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -107,7 +106,7 @@ static func _build_shared() -> void:
 	_soft_dot.fill = GradientTexture2D.FILL_RADIAL
 	_soft_dot.fill_from = Vector2(0.5, 0.5)
 	_soft_dot.fill_to = Vector2(1.0, 0.5)
-	_particle_material = additive_material(Color.WHITE)
+	_particle_material = flat_material(Color.WHITE)
 	_particle_material.albedo_texture = _soft_dot
 	_particle_material.vertex_color_use_as_albedo = true
 	_particle_material.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES

@@ -1,6 +1,6 @@
 extends Node3D
-## Um mago na tela: modelo animado (KayKit Adventurers, CC0) com chapéu, capa, anel no chão e
-## ponta do cajado na cor do jogador. Não conhece a simulação: recebe só o que precisa mostrar.
+## Um mago na tela: modelo animado (KayKit Adventurers, CC0) de manto na cor do jogador, com anel
+## no chão e ponta do cajado acesa. Não conhece a simulação: recebe só o que precisa mostrar.
 
 const MageAnim := preload("res://render/mage_anim.gd")
 const Fx := preload("res://render/fx.gd")
@@ -8,8 +8,9 @@ const MODEL := preload("res://assets/models/mage/Mage.glb")
 
 ## Peças do modelo que este jogo não usa (o mago segura só o cajado).
 const HIDDEN_PARTS: Array[String] = ["Spellbook", "Spellbook_open", "1H_Wand"]
-## Peças pintadas com a cor do jogador.
-const TEAM_PARTS: Array[String] = ["Mage_Hat", "Mage_Cape"]
+## Manto inteiro na cor do jogador; chapéu e capa num tom mais escuro da mesma cor.
+const ROBE_PARTS: Array[String] = ["Mage_Body", "Mage_ArmLeft", "Mage_ArmRight", "Mage_LegLeft", "Mage_LegRight"]
+const TRIM_PARTS: Array[String] = ["Mage_Hat", "Mage_Cape"]
 ## Velocidade de cada animação (as de reação são aceleradas para caber no tempo de `MageAnim`).
 const SPEEDS := {MageAnim.CAST: 2.0, MageAnim.HIT: 1.6, MageAnim.RUN: 1.25}
 const BLEND := 0.12
@@ -34,14 +35,12 @@ func _init(color: Color, shield_color: Color, ring_mesh: Mesh) -> void:
 		_player.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	for part: String in HIDDEN_PARTS:
 		model.find_child(part).visible = false
-	var cloth := StandardMaterial3D.new()
-	cloth.albedo_color = color.darkened(0.15)
-	cloth.roughness = 0.8
-	cloth.emission_enabled = true
-	cloth.emission = color
-	cloth.emission_energy_multiplier = 0.25
-	for part: String in TEAM_PARTS:
-		(model.find_child(part) as MeshInstance3D).material_override = cloth
+	for group: Array in [[ROBE_PARTS, color], [TRIM_PARTS, color.darkened(0.35)]]:
+		var cloth := StandardMaterial3D.new()
+		cloth.albedo_color = group[1]
+		cloth.roughness = 0.9
+		for part: String in group[0]:
+			(model.find_child(part) as MeshInstance3D).material_override = cloth
 
 	# Ponta do cajado acesa na cor do jogador.
 	var staff: Node3D = model.find_child("2H_Staff")
@@ -56,18 +55,18 @@ func _init(color: Color, shield_color: Color, ring_mesh: Mesh) -> void:
 	staff.add_child(orb)
 	var light := OmniLight3D.new()
 	light.light_color = color
-	light.light_energy = 1.2
+	light.light_energy = 0.6
 	light.omni_range = 4.0
 	orb.add_child(light)
 
 	# Anel no chão: é o que identifica o mago na visão de cima, mesmo no escuro.
 	_ring = MeshInstance3D.new()
 	_ring.mesh = ring_mesh
-	_ring.material_override = Fx.additive_material(Color(color, 0.85))
+	_ring.material_override = Fx.flat_material(Color(color, 0.85))
 	_ring.position.y = 0.03
 	add_child(_ring)
 
-	var bubble_material := Fx.additive_material(Color(shield_color, 0.3))
+	var bubble_material := Fx.flat_material(Color(shield_color, 0.2))
 	var bubble_mesh := SphereMesh.new()
 	bubble_mesh.radius = 1.5
 	bubble_mesh.height = 3.0
