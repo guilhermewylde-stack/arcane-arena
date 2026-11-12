@@ -6,6 +6,7 @@ const ArenaView := preload("res://render/arena_view.gd")
 const Spells := preload("res://sim/spells.gd")
 const Bot := preload("res://sim/bot.gd")
 const CameraRig := preload("res://render/camera_rig.gd")
+const Settings := preload("res://game/settings.gd")
 
 const LOCAL_MAGE := 0
 const ZOOM_STEP := 0.08
@@ -30,11 +31,16 @@ var _pending: Array[Dictionary] = []
 var _previous: Dictionary
 var _accumulator := 0.0
 var _help: Label
+var _settings := Settings.DEFAULTS.duplicate()
 ## O último comando de conduzir tinha direção: ao soltar as teclas, manda parar uma vez.
 var _steering := false
 
 
 func _ready() -> void:
+	# Sem arquivo de opções vale a janela padrão do projeto (e a pedida na linha de comando).
+	if FileAccess.file_exists(Settings.PATH):
+		_settings = Settings.load_from()
+		Settings.apply(_settings)
 	restart()
 	view = ArenaView.new(world.arena_radius)
 	add_child(view)
@@ -91,9 +97,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			and not view.is_third_person():
 		cast_slot(SLOT_KEYS.find(event.keycode), get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_F11:
-		var fullscreen := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
-		DisplayServer.window_set_mode(
-			DisplayServer.WINDOW_MODE_WINDOWED if fullscreen else DisplayServer.WINDOW_MODE_FULLSCREEN)
+		_settings.fullscreen = DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN
+		Settings.apply(_settings)
+		Settings.save_to(Settings.PATH, _settings)
 
 
 ## Começa uma partida nova (a vista reaproveita os nós dos magos).

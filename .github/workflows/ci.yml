@@ -1,0 +1,59 @@
+name: CI
+
+# A cada push: testes + build Windows (artefato da execução).
+# A cada tag v*: o mesmo .exe é publicado como release baixável.
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache do Godot
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/godot
+          key: godot-4.6-stable-linux
+      - run: bash tools/setup_godot.sh
+      - run: bash tools/check.sh
+
+  windows:
+    name: Build Windows
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache do Godot e dos templates de exportação
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/godot
+            ~/.local/share/godot/export_templates
+          key: godot-4.6-stable-linux-export-windows
+      - run: bash tools/setup_godot.sh
+      - run: bash tools/export_windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArcaneArena-windows
+          path: build/ArcaneArena.exe
+          if-no-files-found: error
+      - name: Publicar release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cp build/ArcaneArena.exe "ArcaneArena-$TAG-windows.exe"
+          gh release create "$TAG" "ArcaneArena-$TAG-windows.exe" --title "Arcane Arena $TAG" --generate-notes

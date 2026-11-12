@@ -11,6 +11,7 @@ Jogo comercial autopublicado (site próprio, talvez Steam): só usar assets e ad
 - `bash tools/setup_godot.sh` — instala o Godot em `~/.local/bin/godot` (rodar no início de cada sessão na nuvem)
 - `bash tools/check.sh` — importa o projeto e roda os testes (tem que passar antes de todo commit)
 - `bash tools/smoke.sh <pasta>` — roda o jogo de verdade e salva capturas `top.png` e `third.png`
+- `bash tools/export_windows.sh` — exporta `build/ArcaneArena.exe` (o CI faz isso a cada push; tag `v*` publica release)
 - No PC do usuário: abrir `project.godot` no editor Godot 4.6 e apertar F5
 
 ## Arquitetura (módulos profundos, interfaces pequenas)
