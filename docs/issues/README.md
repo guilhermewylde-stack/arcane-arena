@@ -23,5 +23,6 @@ AFK = pode ser feita sem o usuário. HITL = precisa de decisão do usuário ante
 | 015 | Steam: página, Steamworks, build e conquistas | HITL | 011, 012 | aberta |
 | 016 | Opções de vídeo no menu | AFK | 011, 012 | concluída |
 | 017 | Teclas configuráveis | AFK | 012 | concluída |
+| 018 | Personagem 3D no estilo da referência e sistema de skins | HITL | 009 | aberta (espera o modelo do usuário) |
 
-Não resta issue AFK: as abertas (010, 013, 014, 015) são HITL. A 010 (áudio) inclui as opções de áudio do menu.
+Não resta issue AFK: as abertas (010, 013, 014, 015, 018) são HITL. A 010 (áudio) inclui as opções de áudio do menu.

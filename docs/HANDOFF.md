@@ -5,9 +5,9 @@ Copie o bloco abaixo como primeira mensagem da próxima sessão (com o repositó
 ```
 Projeto Arcane Arena (Godot 4.6). Leia CLAUDE.md e docs/HANDOFF.md e siga o método de trabalho de lá.
 Comece rodando bash tools/setup_godot.sh.
-Todas as issues AFK estão concluídas; as abertas (010 áudio, 013 multiplayer, 014 site, 015 Steam) são HITL.
+Todas as issues AFK estão concluídas; as abertas (010 áudio, 013 multiplayer, 014 site, 015 Steam, 018 personagem 3D e skins) são HITL.
 Antes de codar, me faça as perguntas da issue que eu escolher abaixo e espere minhas respostas:
-Issue escolhida: <010 ou 013, ou "ajustes" para só corrigir o que achei jogando>
+Issue escolhida: <018 se já subi o modelo 3D em assets/models/mage/; senão 010 ou 013>
 Meu retorno depois de jogar o .exe: <o que achei do visual novo (magos, chão, lava, magias), controles, câmera, balanceamento, bugs>
 No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 ```
@@ -21,7 +21,7 @@ No fim, atualize docs/HANDOFF.md e me mande o prompt da sessão seguinte.
 - **O usuário ainda não jogou nada à mão.** Tudo que é sensação (sensibilidade do mouse, câmera de ombro, distância da mira, dano, empurrão, preços, tempos) é chute inicial. O primeiro passo útil é ele baixar o `.exe` e contar o que achou.
 
 ## Pendências do usuário
-- **Arte dos personagens (decisão em aberto)**: o usuário enviou a referência de estilo `docs/referencias/mago-estilo.jpg` (fantasia sombria ilustrada, proporções adultas, contorno a nanquim; folha de sprites 2D gerada no Gemini) e quer skins, cajados, chapéus e acessórios trocáveis no futuro. O mago atual de primitivas **não** atende. Um protótipo descartável mostrou que sprites 2D recortados da referência funcionam como billboard na arena. Falta ele escolher: (a) sprites 2D em 8 direções geradas por ele, ou (b) modelo 3D (gerado por IA a partir da referência, comprado ou encomendado) em GLB com esqueleto. Não refazer o visual sem essa decisão.
+- **Arte dos personagens (issue 018)**: decidido **3D** no estilo de `docs/referencias/mago-estilo.jpg`, com skins, cajados, chapéus e acessórios trocáveis. O mago de primitivas é provisório. Falta o usuário entregar o modelo GLB com esqueleto e animações (especificação em `docs/issues/018-personagem-3d-e-skins.md`). Não refazer o visual dos personagens sem esse modelo.
 - Baixar o `ArcaneArena.exe`: GitHub → aba Actions → última execução do "CI" → artefato `ArcaneArena-windows` (precisa estar logado). Confirmar que abre e roda (último item do aceite da 011). O Windows deve mostrar o aviso do SmartScreen, porque o `.exe` não é assinado (assinatura é a issue 014).
 - Para publicar uma release baixável sem login: criar uma tag `v*` (ex.: `git tag v0.1.0 && git push origin v0.1.0`). Esse caminho do workflow ainda não foi exercitado.
 - Olhar o visual novo no PC (Forward+) e dizer o que ajustar: o que ainda incomoda (magos, chão, lava, magias). Se quiser acabamento de jogo comercial, decidir se compra/encomenda modelos e texturas.

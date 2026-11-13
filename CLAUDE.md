@@ -24,7 +24,7 @@ Jogo comercial autopublicado (site próprio, talvez Steam): só usar assets e ad
 - Entrada nunca altera o mundo direto: sempre vira um comando (`queue_command`). Isso mantém o caminho aberto para bots, replays e multiplayer.
 - `tests/` — `test_*.gd` estendem `tests/test_case.gd`; métodos `test_*` são descobertos por `tests/run_tests.gd`.
 - Scripts se referenciam por `preload("res://...")`, não por `class_name` (funciona em modo headless sem cache do editor).
-- A cena é montada por código (sem `.tscn` além de `main.tscn`). Direção de arte: fantasia semi-realista (proporções naturais, paleta terrosa, luz quente de fim de tarde; **nada de aspecto cartoon**) — estilo próprio, sem copiar o visual de nenhum jogo. Shaders em `render/*.gdshader`, efeitos em `render/fx.gd`, mago em `render/mage_view.gd` (figura montada e animada por código).
+- A cena é montada por código (sem `.tscn` além de `main.tscn`). Direção de arte: fantasia sombria ilustrada em 3D, guiada por `docs/referencias/mago-estilo.jpg` (proporções adultas, contorno a nanquim, tecido e couro gastos; **nada de aspecto cartoon**) — estilo próprio, sem copiar o visual de nenhum jogo. Shaders em `render/*.gdshader`, efeitos em `render/fx.gd`, mago em `render/mage_view.gd` (figura provisória montada por código; o modelo definitivo é a issue 018).
 
 ## Método de trabalho (Matt Pocock)
 
